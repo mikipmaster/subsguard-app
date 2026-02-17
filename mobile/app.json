@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "SubsGuard",
+    "slug": "subsguard",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "subsguard",
+    "userInterfaceStyle": "light",
+    "plugins": [
+      "expo-router",
+      "expo-asset",
+      "expo-font"
+    ]
+  }
+}
