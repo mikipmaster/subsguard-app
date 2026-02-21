@@ -9,10 +9,7 @@ interface ButtonProps {
 }
 
 export default function Button({ title, onPress, loading, variant = 'primary', disabled }: ButtonProps) {
-  console.log('🔘 Button render:', title);
-  
   const handlePress = () => {
-    console.log('🔵 BUTTON CLICKED:', title);
     onPress();
   };
   
@@ -39,7 +36,7 @@ export default function Button({ title, onPress, loading, variant = 'primary', d
 
 const styles = StyleSheet.create({
   button: {
-    backgroundColor: '#007AFF',
+    backgroundColor: 'rgba(191, 168, 255, 0.95)',
     paddingVertical: 16,
     paddingHorizontal: 32,
     borderRadius: 12,
@@ -48,12 +45,12 @@ const styles = StyleSheet.create({
     minHeight: 56,
   },
   buttonSecondary: {
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderColor: '#007AFF',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
   },
   buttonDisabled: {
-    backgroundColor: '#ccc',
+    opacity: 0.5,
   },
   buttonText: {
     color: '#fff',
@@ -61,6 +58,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   buttonTextSecondary: {
-    color: '#007AFF',
+    color: 'rgba(255,255,255,0.92)',
   },
 });

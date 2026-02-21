@@ -78,9 +78,8 @@ export default function AddSubscriptionModal() {
       <View style={styles.container}>
         {/* Animated Gradient Background */}
         <LinearGradient
-          colors={gradientColors}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
+          colors={['#0F0C29', '#302B63', '#24243E']}
+          locations={[0, 0.55, 1]}
           style={styles.gradientBackground}
         />
   
@@ -254,7 +253,7 @@ const styles = StyleSheet.create({
         top: 0,
         left: 0,
         right: 0,
-        height: 300, // ← ZMNIEJSZONE z 400
+        bottom: 0,
       },
   header: {
     flexDirection: 'row',
@@ -268,7 +267,9 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -307,15 +308,17 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 18,
     fontWeight: '600',
-    color: theme.colors.text,
+    color: 'rgba(255,255,255,0.85)',
     marginBottom: 12,
   },
   inputCard: {
     padding: 0,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.14)',
   },
   input: {
     fontSize: 17,
-    color: theme.colors.text,
+    color: 'rgba(255,255,255,0.92)',
     paddingHorizontal: 16,
     paddingVertical: 16,
   },
@@ -337,9 +340,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   categoryButtonInactive: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderColor: 'rgba(255,255,255,0.14)',
   },
   categoryTextActive: {
     fontSize: 13,
@@ -349,7 +352,7 @@ const styles = StyleSheet.create({
   categoryTextInactive: {
     fontSize: 13,
     fontWeight: '600',
-    color: theme.colors.textSecondary,
+    color: 'rgba(255,255,255,0.70)',
   },
   cycleGrid: {
     flexDirection: 'row',
@@ -363,9 +366,9 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   cycleButtonInactive: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderColor: 'rgba(255,255,255,0.14)',
   },
   cycleTextActive: {
     fontSize: 14,
@@ -375,6 +378,6 @@ const styles = StyleSheet.create({
   cycleTextInactive: {
     fontSize: 14,
     fontWeight: '600',
-    color: theme.colors.textSecondary,
+    color: 'rgba(255,255,255,0.70)',
   },
 });

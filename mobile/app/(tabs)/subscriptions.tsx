@@ -1,11 +1,11 @@
-import { useEffect, useState,useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, Animated, TextInput, PanResponder, Alert } from 'react-native';
+import { useEffect, useState, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, Animated, TextInput, PanResponder, Alert, Image } from 'react-native';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { formatCurrency } from '../../utils/currency';
-import { getDaysUntilText } from '../../utils/date';
+import { getDaysUntil, getDaysUntilText } from '../../utils/date';
 import { showToast } from '../../utils/toast';
 import GlassCard from '../../components/ui/GlassCard';
 import FAB from '../../components/ui/FAB';
@@ -18,6 +18,65 @@ interface AnimatedCardProps {
   index: number;
   onPress: () => void;
   onDelete: () => void;
+}
+
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+function clamp01(v: number) {
+  return Math.max(0, Math.min(1, v));
+}
+
+function subtractBillingCycle(date: Date, billingCycle: string): Date {
+  const d = new Date(date);
+  switch (billingCycle) {
+    case 'DAILY':
+      d.setDate(d.getDate() - 1);
+      return d;
+    case 'WEEKLY':
+      d.setDate(d.getDate() - 7);
+      return d;
+    case 'MONTHLY':
+      d.setMonth(d.getMonth() - 1);
+      return d;
+    case 'QUARTERLY':
+      d.setMonth(d.getMonth() - 3);
+      return d;
+    case 'YEARLY':
+      d.setFullYear(d.getFullYear() - 1);
+      return d;
+    default:
+      d.setMonth(d.getMonth() - 1);
+      return d;
+  }
+}
+
+function getRemainingRatioToNextPayment(nextBillingDate: string | Date, billingCycle: string) {
+  const next = new Date(nextBillingDate);
+  const periodStart = subtractBillingCycle(next, billingCycle);
+  const now = new Date();
+
+  const totalDays = Math.max(1, Math.round((next.getTime() - periodStart.getTime()) / MS_PER_DAY));
+  const remainingDays = Math.max(0, Math.min(totalDays, Math.ceil((next.getTime() - now.getTime()) / MS_PER_DAY)));
+  const ratio = clamp01(remainingDays / totalDays);
+
+  return {
+    ratio,
+    remainingDays,
+    totalDays,
+  };
+}
+
+function getServiceLogoUrl(name: string) {
+  const n = (name || '').toLowerCase();
+
+  if (n.includes('spotify')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Spotify_logo_without_text.svg/512px-Spotify_logo_without_text.svg.png';
+  if (n.includes('netflix')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/08/Netflix_2015_logo.svg/512px-Netflix_2015_logo.svg.png';
+  if (n.includes('chatgpt') || n.includes('openai')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/OpenAI_Logo.svg/512px-OpenAI_Logo.svg.png';
+  if (n.includes('adobe')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/af/Adobe_Corporate_logo.svg/512px-Adobe_Corporate_logo.svg.png';
+  if (n.includes('icloud') || n.includes('apple')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Apple_logo_black.svg/512px-Apple_logo_black.svg.png';
+  if (n.includes('figma')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/33/Figma-logo.svg/512px-Figma-logo.svg.png';
+  if (n.includes('dropbox')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/78/Dropbox_Icon.svg/512px-Dropbox_Icon.svg.png';
+  return undefined;
 }
 
 function AnimatedCard({ children, index, onPress, onDelete }: AnimatedCardProps) {
@@ -108,7 +167,7 @@ function AnimatedCard({ children, index, onPress, onDelete }: AnimatedCardProps)
         </View>
 
         <Animated.View
-          style={{ transform: [{ translateX }] }}
+          style={{ transform: [{ translateX }], width: '100%' }}
           {...panResponder.panHandlers}
         >
           <GlassCard style={[styles.subscriptionCard, styles.subscriptionCardSolid]} onPress={() => {
@@ -159,8 +218,8 @@ export default function SubscriptionsScreen() {
     return (
       <View style={styles.container}>
         <LinearGradient
-          colors={['#667eea', '#764ba2', '#F5F5F7']}
-          locations={[0, 0.2, 0.5]}
+          colors={['#0F0C29', '#302B63', '#24243E']}
+          locations={[0, 0.55, 1]}
           style={styles.gradientBackground}
         />
         
@@ -268,15 +327,15 @@ const groupedByCategory = (filteredSubscriptions as any).reduce((acc: any, sub: 
     <View style={styles.container}>
       {/* Gradient Background */}
       <LinearGradient
-        colors={['#667eea', '#764ba2', '#F5F5F7']}
-        locations={[0, 0.2, 0.5]}
+        colors={['#0F0C29', '#302B63', '#24243E']}
+        locations={[0, 0.55, 1]}
         style={styles.gradientBackground}
       />
 
       {/* Animated Header */}
       <Animated.View style={[styles.stickyHeader, { opacity: headerOpacity }]}>
         <LinearGradient
-          colors={['rgba(255, 255, 255, 0.95)', 'rgba(255, 255, 255, 0.9)']}
+          colors={['rgba(15, 12, 41, 0.92)', 'rgba(15, 12, 41, 0.72)']}
           style={styles.stickyHeaderGradient}
         >
           <Text style={styles.stickyHeaderTitle}>Subskrypcje</Text>
@@ -305,17 +364,17 @@ const groupedByCategory = (filteredSubscriptions as any).reduce((acc: any, sub: 
         <View style={styles.searchSection}>
           <GlassCard style={styles.searchCard}>
             <View style={styles.searchContainer}>
-              <Ionicons name="search" size={20} color={theme.colors.textSecondary} />
+              <Ionicons name="search" size={20} color="rgba(255,255,255,0.7)" />
               <TextInput
                 style={styles.searchInput}
                 placeholder="Szukaj subskrypcji..."
-                placeholderTextColor={theme.colors.textSecondary}
+                placeholderTextColor="rgba(255,255,255,0.55)"
                 value={searchQuery}
                 onChangeText={setSearchQuery}
               />
               {searchQuery.length > 0 && (
                 <TouchableOpacity onPress={() => setSearchQuery('')}>
-                  <Ionicons name="close-circle" size={20} color={theme.colors.textSecondary} />
+                  <Ionicons name="close-circle" size={20} color="rgba(255,255,255,0.7)" />
                 </TouchableOpacity>
               )}
             </View>
@@ -332,7 +391,7 @@ const groupedByCategory = (filteredSubscriptions as any).reduce((acc: any, sub: 
               <Ionicons 
                 name="apps" 
                 size={16} 
-                color={filter === 'ALL' ? '#fff' : theme.colors.textSecondary} 
+                color={filter === 'ALL' ? '#fff' : 'rgba(255,255,255,0.65)'} 
               />
               <Text style={[styles.filterText, filter === 'ALL' && styles.filterTextActive]}>
                 Wszystkie
@@ -346,7 +405,7 @@ const groupedByCategory = (filteredSubscriptions as any).reduce((acc: any, sub: 
               <Ionicons 
                 name="checkmark-circle" 
                 size={16} 
-                color={filter === 'ACTIVE' ? '#fff' : theme.colors.textSecondary} 
+                color={filter === 'ACTIVE' ? '#fff' : 'rgba(255,255,255,0.65)'} 
               />
               <Text style={[styles.filterText, filter === 'ACTIVE' && styles.filterTextActive]}>
                 Aktywne
@@ -360,7 +419,7 @@ const groupedByCategory = (filteredSubscriptions as any).reduce((acc: any, sub: 
               <Ionicons 
                 name="close-circle" 
                 size={16} 
-                color={filter === 'CANCELLED' ? '#fff' : theme.colors.textSecondary} 
+                color={filter === 'CANCELLED' ? '#fff' : 'rgba(255,255,255,0.65)'} 
               />
               <Text style={[styles.filterText, filter === 'CANCELLED' && styles.filterTextActive]}>
                 Anulowane
@@ -407,9 +466,12 @@ const groupedByCategory = (filteredSubscriptions as any).reduce((acc: any, sub: 
               </View>
 
               {(subs as any[]).map((sub: any, index: number) => {
-
                 const iconName = categoryIcons[sub.category] || 'apps';
                 const bgColor = categoryColors[sub.category] || '#95A5A6';
+                const logoUrl = getServiceLogoUrl(sub.name);
+
+                const { ratio } = getRemainingRatioToNextPayment(sub.nextBillingDate, sub.billingCycle);
+                const barColor = ratio > 0.5 ? '#22C55E' : ratio >= 0.25 ? '#F59E0B' : '#EF4444';
 
                 return (
                   <AnimatedCard
@@ -425,23 +487,33 @@ const groupedByCategory = (filteredSubscriptions as any).reduce((acc: any, sub: 
                       }
                     }}
                   >
-                    <View style={styles.cardContent}>
-                      <View style={[styles.subscriptionIcon, { backgroundColor: bgColor }]}>
-                        <Ionicons name={iconName} size={24} color="#fff" />
+                    <View style={styles.cardBody}>
+                      <View style={styles.cardContent}>
+                        <View style={[styles.subscriptionIcon, { backgroundColor: bgColor }]}>
+                          {logoUrl ? (
+                            <Image source={{ uri: logoUrl }} style={styles.subscriptionLogo} />
+                          ) : (
+                            <Ionicons name={iconName} size={24} color="#fff" />
+                          )}
+                        </View>
+                        <View style={styles.subscriptionInfo}>
+                          <Text style={styles.subscriptionName} numberOfLines={1}>{sub.name}</Text>
+                          <Text style={styles.metaText}>
+                            {getDaysUntilText(sub.nextBillingDate)}
+                          </Text>
+                        </View>
+                        <View style={styles.priceContainer}>
+                          <Text style={styles.price}>
+                            {formatCurrency(sub.price, sub.currency)}
+                          </Text>
+                          <Text style={styles.metaText}>
+                            /{sub.billingCycle === 'MONTHLY' ? 'msc' : sub.billingCycle.toLowerCase()}
+                          </Text>
+                        </View>
                       </View>
-                      <View style={styles.subscriptionInfo}>
-                        <Text style={styles.subscriptionName}>{sub.name}</Text>
-                        <Text style={styles.metaText}>
-                          {categoryNames[sub.category] || 'Inne'}
-                        </Text>
-                      </View>
-                      <View style={styles.priceContainer}>
-                        <Text style={styles.price}>
-                          {formatCurrency(sub.price, sub.currency)}
-                        </Text>
-                        <Text style={styles.metaText}>
-                          /{sub.billingCycle === 'MONTHLY' ? 'msc' : 'rok'}
-                        </Text>
+
+                      <View style={styles.progressTrack}>
+                        <View style={[styles.progressFill, { width: `${Math.round(ratio * 100)}%`, backgroundColor: barColor }]} />
                       </View>
                     </View>
                   </AnimatedCard>
@@ -472,7 +544,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: 250,
+    bottom: 0,
   },
   stickyHeader: {
     position: 'absolute',
@@ -486,12 +558,12 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     paddingHorizontal: theme.spacing.l,
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.borderLight,
+    borderBottomColor: 'rgba(255,255,255,0.10)',
   },
   stickyHeaderTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: theme.colors.text,
+    color: 'rgba(255,255,255,0.92)',
     textAlign: 'center',
   },
   scrollView: {
@@ -521,6 +593,8 @@ const styles = StyleSheet.create({
   },
   searchCard: {
     padding: 0,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.14)',
   },
   searchContainer: {
     flexDirection: 'row',
@@ -532,7 +606,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 16,
-    color: theme.colors.text,
+    color: 'rgba(255,255,255,0.92)',
   },
   filtersSection: {
     paddingHorizontal: theme.spacing.l,
@@ -545,17 +619,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
     marginRight: 8,
     ...theme.shadows.small,
   },
   filterChipActive: {
-    backgroundColor: theme.colors.primary,
+    backgroundColor: 'rgba(191, 168, 255, 0.28)',
+    borderColor: 'rgba(191, 168, 255, 0.45)',
   },
   filterText: {
     fontSize: 15,
     fontWeight: '600',
-    color: theme.colors.textSecondary,
+    color: 'rgba(255,255,255,0.75)',
   },
   filterTextActive: {
     color: '#fff',
@@ -572,7 +649,7 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: 'rgba(10, 132, 255, 0.1)',
+    backgroundColor: 'rgba(191, 168, 255, 0.14)',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 24,
@@ -580,12 +657,12 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 22,
     fontWeight: '700',
-    color: theme.colors.text,
+    color: 'rgba(255,255,255,0.92)',
     marginBottom: 8,
   },
   emptyText: {
     fontSize: 16,
-    color: theme.colors.textSecondary,
+    color: 'rgba(255,255,255,0.65)',
     marginBottom: 24,
     textAlign: 'center',
   },
@@ -593,7 +670,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: theme.colors.primary,
+    backgroundColor: 'rgba(191, 168, 255, 0.95)',
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 12,
@@ -623,26 +700,28 @@ const styles = StyleSheet.create({
   categoryTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: theme.colors.text,
+    color: 'rgba(255,255,255,0.92)',
     flex: 1,
   },
   categoryCount: {
     fontSize: 15,
     fontWeight: '600',
-    color: theme.colors.textSecondary,
+    color: 'rgba(255,255,255,0.55)',
   },
   subscriptionCard: {
     marginBottom: 0,
+    width: '100%',
   },
   subscriptionCardSolid: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: 'rgba(20, 18, 45, 0.96)',
+    borderColor: 'rgba(255,255,255,0.12)',
   },
   swipeContainer: {
     position: 'relative',
     marginBottom: 12,
     borderRadius: theme.radius.xl,
     overflow: 'hidden',
-    backgroundColor: theme.colors.surface,
+    backgroundColor: 'rgba(20, 18, 45, 0.96)',
   },
   deleteUnderlay: {
     position: 'absolute',
@@ -672,12 +751,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
+  cardBody: {
+    gap: 12,
+  },
   subscriptionIcon: {
     width: 56,
     height: 56,
     borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
+  },
+  subscriptionLogo: {
+    width: 26,
+    height: 26,
+    resizeMode: 'contain',
+    borderRadius: 8,
   },
   subscriptionInfo: {
     flex: 1,
@@ -685,12 +774,12 @@ const styles = StyleSheet.create({
   subscriptionName: {
     fontSize: 17,
     fontWeight: '600',
-    color: theme.colors.text,
+    color: 'rgba(255,255,255,0.92)',
     marginBottom: 4,
   },
   metaText: {
     fontSize: 14,
-    color: theme.colors.textSecondary,
+    color: 'rgba(255,255,255,0.62)',
   },
   priceContainer: {
     alignItems: 'flex-end',
@@ -698,6 +787,16 @@ const styles = StyleSheet.create({
   price: {
     fontSize: 18,
     fontWeight: '700',
-    color: theme.colors.text,
+    color: 'rgba(255,255,255,0.92)',
+  },
+  progressTrack: {
+    height: 6,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 6,
   },
 });

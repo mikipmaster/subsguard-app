@@ -1,18 +1,89 @@
-import { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, Animated, Dimensions } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, StyleSheet, RefreshControl, Animated, Dimensions, TouchableOpacity, Image } from 'react-native';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../store/authStore';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { formatCurrency } from '../../utils/currency';
-import { getDaysUntilText, getDaysUntil } from '../../utils/date';
+import { formatShortDate, getDaysUntil, getDaysUntilText } from '../../utils/date';
 import GlassCard from '../../components/ui/GlassCard';
 import FAB from '../../components/ui/FAB';
 import { theme } from '../../constants/theme';
 
 
 const { width } = Dimensions.get('window');
+
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+function clamp01(v: number) {
+  return Math.max(0, Math.min(1, v));
+}
+
+function getServiceLogoUrl(name: string) {
+  const n = (name || '').toLowerCase();
+
+  if (n.includes('spotify')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Spotify_logo_without_text.svg/512px-Spotify_logo_without_text.svg.png';
+  if (n.includes('netflix')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/08/Netflix_2015_logo.svg/512px-Netflix_2015_logo.svg.png';
+  if (n.includes('chatgpt') || n.includes('openai')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/OpenAI_Logo.svg/512px-OpenAI_Logo.svg.png';
+  if (n.includes('adobe')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/af/Adobe_Corporate_logo.svg/512px-Adobe_Corporate_logo.svg.png';
+  if (n.includes('icloud') || n.includes('apple')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Apple_logo_black.svg/512px-Apple_logo_black.svg.png';
+  if (n.includes('figma')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/33/Figma-logo.svg/512px-Figma-logo.svg.png';
+  if (n.includes('dropbox')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/78/Dropbox_Icon.svg/512px-Dropbox_Icon.svg.png';
+  return undefined;
+}
+
+function labelForUpcomingDate(nextBillingDate: string | Date) {
+  const d = new Date(nextBillingDate);
+  const days = getDaysUntil(d);
+
+  if (days <= 0) return 'Today';
+  if (days === 1) return 'Tomorrow';
+
+  const weekday = d.toLocaleDateString('en-US', { weekday: 'long' });
+  if (days < 7) return `Next ${weekday}`;
+  return formatShortDate(d);
+}
+
+function subtractBillingCycle(date: Date, billingCycle: string): Date {
+  const d = new Date(date);
+  switch (billingCycle) {
+    case 'DAILY':
+      d.setDate(d.getDate() - 1);
+      return d;
+    case 'WEEKLY':
+      d.setDate(d.getDate() - 7);
+      return d;
+    case 'MONTHLY':
+      d.setMonth(d.getMonth() - 1);
+      return d;
+    case 'QUARTERLY':
+      d.setMonth(d.getMonth() - 3);
+      return d;
+    case 'YEARLY':
+      d.setFullYear(d.getFullYear() - 1);
+      return d;
+    default:
+      d.setMonth(d.getMonth() - 1);
+      return d;
+  }
+}
+
+function getRemainingRatioToNextPayment(nextBillingDate: string | Date, billingCycle: string) {
+  const next = new Date(nextBillingDate);
+  const periodStart = subtractBillingCycle(next, billingCycle);
+  const now = new Date();
+
+  const totalDays = Math.max(1, Math.round((next.getTime() - periodStart.getTime()) / MS_PER_DAY));
+  const remainingDays = Math.max(0, Math.min(totalDays, Math.ceil((next.getTime() - now.getTime()) / MS_PER_DAY)));
+  const ratio = clamp01(remainingDays / totalDays);
+
+  return {
+    ratio,
+    remainingDays,
+    totalDays,
+  };
+}
 
 // Animated Counter Hook
 function useAnimatedCounter(end: number, duration: number = 1000) {
@@ -56,126 +127,54 @@ export default function DashboardScreen() {
     fetchSubscriptions();
   }, []);
 
-  const PlaceholderMainStatCard = () => (
-    <GlassCard style={styles.mainStatCard}>
-      <View style={[styles.gradientCard, { backgroundColor: '#EAEAEA' }]}>
-        <View style={[styles.statHeader, { opacity: 0.6 }]}>
-          <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: '#D5D5D5' }} />
-          <View style={{ width: 60, height: 20, borderRadius: 10, backgroundColor: '#D5D5D5' }} />
-        </View>
-        <View style={{ width: 140, height: 16, borderRadius: 8, backgroundColor: '#D5D5D5', marginBottom: 10 }} />
-        <View style={{ width: 220, height: 40, borderRadius: 12, backgroundColor: '#D5D5D5', marginBottom: 14 }} />
-        <View style={{ width: 170, height: 14, borderRadius: 7, backgroundColor: '#D5D5D5' }} />
-      </View>
-    </GlassCard>
-  );
-
-  const PlaceholderMiniStatCard = () => (
-    <GlassCard style={styles.miniStatCard}>
-      <View style={[styles.iconCircle, { backgroundColor: '#E0E0E0' }]} />
-      <View style={{ width: 40, height: 24, borderRadius: 8, backgroundColor: '#E0E0E0', marginBottom: 6 }} />
-      <View style={{ width: 70, height: 12, borderRadius: 6, backgroundColor: '#E0E0E0' }} />
-    </GlassCard>
-  );
-
-  const PlaceholderPaymentCard = () => (
-    <GlassCard style={styles.paymentCard}>
-      <View style={styles.paymentLeft}>
-        <View style={[styles.subscriptionIcon, { backgroundColor: '#E0E0E0' }]} />
-        <View style={{ flex: 1, gap: 8 }}>
-          <View style={{ width: '60%', height: 14, borderRadius: 7, backgroundColor: '#E0E0E0' }} />
-          <View style={{ width: '40%', height: 12, borderRadius: 6, backgroundColor: '#E0E0E0' }} />
-        </View>
-      </View>
-      <View style={styles.paymentRight}>
-        <View style={{ width: 80, height: 14, borderRadius: 7, backgroundColor: '#E0E0E0', marginBottom: 6 }} />
-        <View style={{ width: 30, height: 12, borderRadius: 6, backgroundColor: '#E0E0E0' }} />
-      </View>
-    </GlassCard>
-  );
-
   const showSkeleton = isLoading && subscriptions.length === 0;
 
   const activeSubscriptions = subscriptions.filter((s) => s.status === 'ACTIVE');
   const upcomingPayments = activeSubscriptions
     .sort((a, b) => new Date(a.nextBillingDate).getTime() - new Date(b.nextBillingDate).getTime())
-    .slice(0, 5);
+    .slice(0, 3);
 
-  // MOCK DATA FOR TESTING ANIMATIONS
-  //const totalMonthly = getTotalMonthly();
-  //const totalYearly = totalMonthly * 12;
-  
   const totalMonthly = getTotalMonthly();
-  const totalYearly = totalMonthly * 12;
-
-
-  // Animated counters
   const animatedMonthly = useAnimatedCounter(totalMonthly, 1500);
-  const animatedYearly = useAnimatedCounter(totalYearly, 1800);
-
-  const animatedActiveCount = useAnimatedCounter(activeSubscriptions.length, 1000);
-  const animatedUpcomingCount = useAnimatedCounter(upcomingPayments.length, 1200);
-
-
-
-// Stats cards animation
-  const statsOpacity = useRef(new Animated.Value(0)).current;
-  const statsScale = useRef(new Animated.Value(0.9)).current;
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(statsOpacity, {
-        toValue: 1,
-        duration: 600,
-        delay: 200,
-        useNativeDriver: true,
-      }),
-      Animated.spring(statsScale, {
-        toValue: 1,
-        delay: 200,
-        useNativeDriver: true,
-        tension: 50,
-        friction: 7,
-      }),
-    ]).start();
-  }, [subscriptions]);
-
   const headerOpacity = scrollY.interpolate({
     inputRange: [0, 100],
     outputRange: [1, 0],
     extrapolate: 'clamp',
   });
 
+  const yourSubscriptions = useMemo(() => activeSubscriptions.slice(0, 3), [activeSubscriptions]);
 
-  const categoryIcons: Record<string, any> = {
-    STREAMING: 'play-circle',
-    FITNESS: 'barbell',
-    SAAS: 'cloud',
-    GAMING: 'game-controller',
-    MUSIC: 'musical-notes',
-    CLOUD_STORAGE: 'cloud-upload',
-    NEWS: 'newspaper',
-    EDUCATION: 'school',
-    OTHER: 'apps',
+  const iconSpecFor = (name: string) => {
+    const n = (name || '').toLowerCase();
+    const logoUrl = getServiceLogoUrl(name);
+    if (n.includes('netflix')) return { label: 'N', color: '#E50914', logoUrl };
+    if (n.includes('spotify')) return { label: 'S', color: '#1DB954', logoUrl };
+    if (n.includes('adobe')) return { label: 'A', color: '#FF6A00', logoUrl };
+    if (n.includes('icloud') || n.includes('apple')) return { label: 'i', color: '#60A5FA', logoUrl };
+    if (n.includes('chatgpt') || n.includes('openai')) return { label: 'G', color: '#10B981', logoUrl };
+    if (n.includes('dropbox')) return { label: 'D', color: '#0061FF', logoUrl };
+    if (n.includes('figma')) return { label: 'F', color: '#A259FF', logoUrl };
+    return { label: (name || '?').trim().charAt(0).toUpperCase() || '?', color: '#6C63FF', logoUrl };
   };
 
-  const categoryColors: Record<string, string> = {
-    STREAMING: '#FF6B6B',
-    FITNESS: '#4ECDC4',
-    SAAS: '#45B7D1',
-    GAMING: '#A66BFF',
-    MUSIC: '#FFA07A',
-    CLOUD_STORAGE: '#98D8C8',
-    NEWS: '#F7DC6F',
-    EDUCATION: '#BB8FCE',
-    OTHER: '#95A5A6',
+  const categoryPillFor = (category: string) => {
+    switch (category) {
+      case 'STREAMING':
+        return { text: 'Video', color: 'rgba(255, 99, 132, 0.18)', border: 'rgba(255, 99, 132, 0.35)' };
+      case 'MUSIC':
+        return { text: 'Music', color: 'rgba(34, 197, 94, 0.18)', border: 'rgba(34, 197, 94, 0.35)' };
+      case 'SAAS':
+        return { text: 'SaaS', color: 'rgba(56, 189, 248, 0.18)', border: 'rgba(56, 189, 248, 0.35)' };
+      default:
+        return { text: 'Other', color: 'rgba(255, 255, 255, 0.10)', border: 'rgba(255, 255, 255, 0.18)' };
+    }
   };
 
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={['#667eea', '#764ba2', '#F5F5F7']}
-        locations={[0, 0.3, 0.7]}
+        colors={['#0F0C29', '#302B63', '#24243E']}
+        locations={[0, 0.55, 1]}
         style={styles.gradientBackground}
       />
 
@@ -189,192 +188,183 @@ export default function DashboardScreen() {
           <RefreshControl refreshing={isLoading} onRefresh={fetchSubscriptions} tintColor="#fff" />
         }
       >
-        <Animated.View style={[styles.header, { opacity: headerOpacity }]}> 
-          <View>
-            <Text style={styles.greeting}>
-              Cześć, {user?.name?.split(' ')[0]}! 👋
-            </Text>
-            <Text style={styles.subtitle}>
-              {showSkeleton
-                ? 'Ładowanie...'
-                : new Date().toLocaleDateString('pl-PL', {
-                    weekday: 'long',
-                    day: 'numeric',
-                    month: 'long'
-                  })}
-            </Text>
+        <Animated.View style={[styles.header, { opacity: headerOpacity }]}>
+          <View style={styles.headerLeft}>
+            <GlassCard style={styles.avatarButton} onPress={() => router.push('/(tabs)/settings')} hoverable>
+              <Text style={styles.avatarText}>{user?.name?.charAt(0).toUpperCase()}</Text>
+            </GlassCard>
+            <View>
+              <Text style={styles.goodEveningLabel}>Good evening,</Text>
+              <Text style={styles.goodEveningName}>{user?.name?.split(' ')[0] || 'User'}</Text>
+            </View>
           </View>
-          <GlassCard
-            style={styles.avatarButton}
-            onPress={showSkeleton ? undefined : () => router.push('/(tabs)/settings')}
-            hoverable={!showSkeleton}
+
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => router.push('/(tabs)/settings')}
+            style={styles.notificationButton}
           >
-            <Text style={styles.avatarText}>
-              {user?.name?.charAt(0).toUpperCase()}
-            </Text>
-          </GlassCard>
+            <Ionicons name="notifications-outline" size={20} color="rgba(255,255,255,0.92)" />
+          </TouchableOpacity>
         </Animated.View>
 
-        <View style={styles.statsGrid}>
-          {showSkeleton ? (
-            <>
-              <PlaceholderMainStatCard />
-              <View style={styles.miniStatsRow}>
-                <PlaceholderMiniStatCard />
-                <PlaceholderMiniStatCard />
+        <View style={styles.heroWrap}>
+          <GlassCard style={styles.heroCard}>
+            <LinearGradient
+              colors={['#6C63FF', '#23D5AB']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.heroGradient}
+            >
+              <View style={styles.heroTopRow}>
+                <Text style={styles.heroLabel}>Total Monthly Spending</Text>
+                <View style={styles.trendPill}>
+                  <Ionicons name="arrow-up" size={12} color="#22C55E" />
+                  <Text style={styles.trendText}>+12%</Text>
+                </View>
               </View>
-            </>
-          ) : (
-            <>
-              <GlassCard style={styles.mainStatCard}>
-                <LinearGradient
-                  colors={['#667eea', '#764ba2']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.gradientCard}
+              <View style={styles.heroValueRow}>
+                <Text style={styles.heroValue}>{animatedMonthly}</Text>
+                <Text style={styles.heroCurrency}>PLN</Text>
+              </View>
+              <View style={styles.heroBottomRow}>
+                <View style={styles.fakeChartRow}>
+                  <View style={[styles.fakeDot, { opacity: 0.9 }]} />
+                  <View style={[styles.fakeDot, { opacity: 0.7 }]} />
+                  <View style={[styles.fakeDot, { opacity: 0.5 }]} />
+                </View>
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => router.push('/(tabs)/analytics')}
+                  style={styles.heroCta}
                 >
-                  <View style={styles.statHeader}>
-                    <Ionicons name="wallet" size={28} color="#fff" />
-                    <View style={styles.badge}>
-                      <Text style={styles.badgeText}>{user?.tier}</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.statLabel}>Wydatki miesięczne</Text>
-                  <Text style={styles.statValueLarge}>{formatCurrency(animatedMonthly)}</Text>
-                  <View style={styles.statFooter}>
-                    <Ionicons name="trending-up" size={16} color="rgba(255,255,255,0.8)" />
-                    <Text style={styles.statFooterText}>
-                      {formatCurrency(animatedYearly)} rocznie
-                    </Text>
-                  </View>
-                </LinearGradient>
-              </GlassCard>
-
-              <View style={styles.miniStatsRow}>
-                <GlassCard style={styles.miniStatCard}>
-                  <View style={[styles.iconCircle, { backgroundColor: '#34C759' }]}>
-                    <Ionicons name="checkmark-circle" size={24} color="#fff" />
-                  </View>
-                  <Text style={styles.miniStatValue}>{animatedActiveCount}</Text>
-                  <Text style={styles.miniStatLabel}>Aktywne</Text>
-                </GlassCard>
-
-                <GlassCard style={styles.miniStatCard}>
-                  <View style={[styles.iconCircle, { backgroundColor: '#FF9500' }]}>
-                    <Ionicons name="time" size={24} color="#fff" />
-                  </View>
-                  <Text style={styles.miniStatValue}>{animatedUpcomingCount}</Text>
-                  <Text style={styles.miniStatLabel}>Zbliżające się</Text>
-                </GlassCard>
+                  <Text style={styles.heroCtaText}>See Analytics</Text>
+                </TouchableOpacity>
               </View>
-            </>
-          )}
+            </LinearGradient>
+          </GlassCard>
         </View>
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Nadchodzące płatności</Text>
-            <GlassCard 
+            <Text style={styles.sectionTitle}>Your Subscriptions</Text>
+            <TouchableOpacity
+              activeOpacity={0.8}
               onPress={() => router.push('/(tabs)/subscriptions')}
-              hoverable
             >
-              <Text style={styles.seeAllButton}>Zobacz wszystkie</Text>
-            </GlassCard>
+              <Text style={styles.seeAllText}>See all</Text>
+            </TouchableOpacity>
           </View>
 
           {showSkeleton ? (
-            <>
-              <PlaceholderPaymentCard />
-              <View style={{ height: 12 }} />
-              <PlaceholderPaymentCard />
-              <View style={{ height: 12 }} />
-              <PlaceholderPaymentCard />
-            </>
-          ) : upcomingPayments.length === 0 ? null : (
-            upcomingPayments.map((sub, index) => {
-              const daysUntil = getDaysUntil(sub.nextBillingDate);
-              const isUrgent = daysUntil <= 3;
-              const iconName = categoryIcons[sub.category] || 'apps';
-              const bgColor = categoryColors[sub.category] || '#95A5A6';
+            <View style={{ height: 140 }} />
+          ) : yourSubscriptions.length === 0 ? null : (
+            <View style={styles.subscriptionList}>
+              {yourSubscriptions.map((sub) => {
+                const { label, color, logoUrl } = iconSpecFor(sub.name);
+                const pill = categoryPillFor(sub.category);
+                const { ratio } = getRemainingRatioToNextPayment(sub.nextBillingDate, sub.billingCycle);
 
-              return (
-                <GlassCard
-                  key={sub._id}
-                  style={[styles.paymentCard, index > 0 && { marginTop: 12 }]}
-                  onPress={() => router.push(`/modals/edit-subscription?id=${sub._id}`)}
-                  hoverable
-                >
-                  <View style={styles.paymentLeft}>
-                    <View style={[styles.subscriptionIcon, { backgroundColor: bgColor }]}>
-                      <Ionicons name={iconName} size={24} color="#fff" />
-                    </View>
-                    <View style={styles.paymentInfo}>
-                      <Text style={styles.paymentName}>{sub.name}</Text>
-                      <View style={styles.paymentDateRow}>
-                        {isUrgent && (
-                          <Ionicons name="alert-circle" size={14} color={theme.colors.warning} />
+                const barColor =
+                  ratio > 0.5 ? '#22C55E' : ratio >= 0.25 ? '#F59E0B' : '#EF4444';
+
+                return (
+                  <GlassCard
+                    key={sub._id}
+                    style={styles.subscriptionCard}
+                    onPress={() => router.push(`/modals/edit-subscription?id=${sub._id}`)}
+                    hoverable
+                  >
+                    <View style={styles.subscriptionRow}>
+                      <View style={[styles.serviceIcon, { backgroundColor: color }]}>
+                        {logoUrl ? (
+                          <Image source={{ uri: logoUrl }} style={styles.serviceLogo} />
+                        ) : (
+                          <Text style={styles.serviceIconText}>{label}</Text>
                         )}
-                        <Text
-                          style={[
-                            styles.paymentDate,
-                            isUrgent && { color: theme.colors.warning, fontWeight: '600' }
-                          ]}
-                        >
-                          {getDaysUntilText(sub.nextBillingDate)}
+                      </View>
+
+                      <View style={styles.subscriptionInfo}>
+                        <Text style={styles.subscriptionName} numberOfLines={1}>
+                          {sub.name}
+                        </Text>
+                        <Text style={styles.subscriptionMeta}>
+                          Renews on {formatShortDate(sub.nextBillingDate)}
                         </Text>
                       </View>
+
+                      <View style={styles.subscriptionRight}>
+                        <Text style={styles.subscriptionPrice}>{formatCurrency(sub.price, sub.currency)}</Text>
+                        <View style={[styles.categoryPill, { backgroundColor: pill.color, borderColor: pill.border }]}>
+                          <Text style={styles.categoryPillText}>{pill.text}</Text>
+                        </View>
+                      </View>
                     </View>
-                  </View>
-                  <View style={styles.paymentRight}>
-                    <Text style={styles.paymentAmount}>
-                      {formatCurrency(sub.price, sub.currency)}
-                    </Text>
-                    <Text style={styles.paymentCycle}>
-                      /{sub.billingCycle === 'MONTHLY' ? 'msc' : 'rok'}
-                    </Text>
-                  </View>
-                </GlassCard>
-              );
-            })
+
+                    <View style={styles.progressTrack}>
+                      <View
+                        style={[
+                          styles.progressFill,
+                          { width: `${Math.round(ratio * 100)}%`, backgroundColor: barColor },
+                        ]}
+                      />
+                    </View>
+                  </GlassCard>
+                );
+              })}
+            </View>
           )}
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Podsumowanie</Text>
-          <GlassCard style={styles.quickStatsCard}>
-            <View style={styles.quickStatRow}>
-              <Text style={styles.quickStatLabel}>Średnia na subskrypcję</Text>
-              <Text style={styles.quickStatValue}>
-                {activeSubscriptions.length > 0 
-                  ? formatCurrency(totalMonthly / activeSubscriptions.length)
-                  : formatCurrency(0)
-                }
-              </Text>
-            </View>
-            <View style={styles.quickStatDivider} />
-            <View style={styles.quickStatRow}>
-              <Text style={styles.quickStatLabel}>Najtańsza subskrypcja</Text>
-              <Text style={styles.quickStatValue}>
-                {activeSubscriptions.length > 0
-                  ? formatCurrency(Math.min(...activeSubscriptions.map(s => s.price)))
-                  : '-'
-                }
-              </Text>
-            </View>
-            <View style={styles.quickStatDivider} />
-            <View style={styles.quickStatRow}>
-              <Text style={styles.quickStatLabel}>Najdroższa subskrypcja</Text>
-              <Text style={styles.quickStatValue}>
-                {activeSubscriptions.length > 0
-                  ? formatCurrency(Math.max(...activeSubscriptions.map(s => s.price)))
-                  : '-'
-                }
-              </Text>
-            </View>
-          </GlassCard>
+          <Text style={styles.sectionTitle}>Upcoming payments</Text>
+          <View style={styles.timelineWrap}>
+            {showSkeleton ? (
+              <View style={{ height: 140 }} />
+            ) : upcomingPayments.length === 0 ? null : (
+              <View style={styles.timelineList}>
+                <View style={styles.timelineRail} />
+                {upcomingPayments.map((sub, idx) => {
+                  const when = labelForUpcomingDate(sub.nextBillingDate);
+                  const { label, color, logoUrl } = iconSpecFor(sub.name);
+
+                  return (
+                    <View key={sub._id} style={styles.timelineRow}>
+                      <View style={styles.timelineLeft}>
+                        <Text style={styles.timelineWhen}>{when}</Text>
+                        <View style={styles.timelineDotOuter}>
+                          <View style={styles.timelineDotInner} />
+                        </View>
+                      </View>
+
+                      <GlassCard
+                        style={styles.timelineCard}
+                        onPress={() => router.push(`/modals/edit-subscription?id=${sub._id}`)}
+                        hoverable
+                      >
+                        <View style={styles.timelineCardLeft}>
+                          <View style={[styles.timelineServiceIcon, { backgroundColor: color }]}>
+                            {logoUrl ? (
+                              <Image source={{ uri: logoUrl }} style={styles.timelineServiceLogo} />
+                            ) : (
+                              <Text style={styles.timelineServiceIconText}>{label}</Text>
+                            )}
+                          </View>
+                          <Text style={styles.timelineName} numberOfLines={1}>
+                            {sub.name}
+                          </Text>
+                        </View>
+                        <Text style={styles.timelineAmount}>{formatCurrency(sub.price, sub.currency)}</Text>
+                      </GlassCard>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+          </View>
         </View>
 
-        <View style={{ height: 100 }} />
+        <View style={{ height: 140 }} />
       </Animated.ScrollView>
 
       <FAB 
@@ -395,99 +385,154 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: 280,
+    bottom: 0,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 32,
+    paddingBottom: 24,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     paddingHorizontal: theme.spacing.l,
-    paddingTop: 60,
-    paddingBottom: theme.spacing.l,
+    paddingTop: 56,
+    paddingBottom: 14,
   },
-  
+
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
   avatarButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
     padding: 0,
   },
   avatarText: {
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '800',
     color: '#fff',
   },
-  statsGrid: {
+  goodEveningLabel: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.7)',
+    fontWeight: '600',
+  },
+  goodEveningName: {
+    fontSize: 18,
+    color: 'rgba(255,255,255,0.95)',
+    fontWeight: '800',
+    marginTop: 1,
+  },
+  notificationButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  heroWrap: {
     paddingHorizontal: theme.spacing.l,
-    gap: 12,
+    marginTop: 6,
   },
-  mainStatCard: {
+  heroCard: {
     padding: 0,
-    overflow: 'hidden',
   },
-  gradientCard: {
-    padding: theme.spacing.l,
-    borderRadius: theme.radius.xl,
+  heroGradient: {
+    padding: 18,
+    borderRadius: 22,
   },
-  statHeader: {
+  heroTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: theme.spacing.m,
   },
-  badge: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
+  heroLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.88)',
   },
-  badgeText: {
-    color: '#fff',
+  trendPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+  },
+  trendText: {
+    color: '#EAFEF2',
+    fontWeight: '800',
     fontSize: 12,
-    fontWeight: '600',
   },
-  
-  statFooter: {
+  heroValueRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 6,
+    marginTop: 10,
+  },
+  heroValue: {
+    fontSize: 44,
+    color: '#fff',
+    fontWeight: '900',
+    letterSpacing: -0.8,
+  },
+  heroCurrency: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.9)',
+    fontWeight: '800',
+  },
+  heroBottomRow: {
+    marginTop: 14,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  fakeChartRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
-  statFooterText: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
+  fakeDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: 'rgba(15, 12, 41, 0.30)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
   },
-  miniStatsRow: {
-    flexDirection: 'row',
-    gap: 12,
+  heroCta: {
+    backgroundColor: 'rgba(15, 12, 41, 0.25)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.20)',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 18,
   },
-  miniStatCard: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: theme.spacing.l,
+  heroCtaText: {
+    color: 'rgba(255,255,255,0.95)',
+    fontWeight: '800',
+    fontSize: 12,
   },
-  iconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
- 
+
   section: {
     paddingHorizontal: theme.spacing.l,
-    marginTop: 32,
+    marginTop: 22,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -495,134 +540,191 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
-  
-  seeAllButton: {
-    fontSize: 15,
-    color: theme.colors.primary,
-    fontWeight: '600',
-  },
-  paymentCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  paymentLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    gap: 12,
-  },
-  subscriptionIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  paymentInfo: {
-    flex: 1,
-  },
-  
-  paymentDateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  paymentDate: {
-    fontSize: 14,
-    color: theme.colors.textSecondary,
-  },
-  paymentRight: {
-    alignItems: 'flex-end',
-  },
-  
-  paymentCycle: {
-    fontSize: 12,
-    color: theme.colors.textSecondary,
-  },
-  quickStatsCard: {
-    paddingVertical: 8,
-    marginTop: 12,
-  },
-  quickStatRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  quickStatLabel: {
-    fontSize: 15,
-    color: theme.colors.textSecondary,
-  },
-  quickStatValue: {
+  sectionTitle: {
     fontSize: 16,
-    fontWeight: '600',
-    color: theme.colors.text,
-  },
-  quickStatDivider: {
-    height: 1,
-    backgroundColor: theme.colors.borderLight,
+    fontWeight: '800',
+    color: 'rgba(255,255,255,0.92)',
   },
 
-  greeting: {
-    fontSize: 34, // było 32
-    fontWeight: '800', // było '700'
+  seeAllText: {
+    color: 'rgba(255,255,255,0.75)',
+    fontWeight: '800',
+    fontSize: 12,
+  },
+
+  subscriptionList: {
+    gap: 12,
+  },
+  subscriptionCard: {
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  subscriptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  serviceIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  serviceIconText: {
     color: '#fff',
-    marginBottom: 4,
-    letterSpacing: 0.37,
+    fontWeight: '900',
+    fontSize: 16,
   },
-  subtitle: {
-    fontSize: 17, // było 15
-    fontWeight: '500', // dodaj to
-    color: 'rgba(255, 255, 255, 0.9)', // było 0.8
-    textTransform: 'capitalize',
-    letterSpacing: -0.41,
+  serviceLogo: {
+    width: 22,
+    height: 22,
+    resizeMode: 'contain',
+    borderRadius: 6,
   },
-  statLabel: {
-    fontSize: 16, // było 15
-    fontWeight: '500', // było brak
-    color: 'rgba(255, 255, 255, 0.9)', // było 0.8
-    marginBottom: 8,
-    letterSpacing: -0.32,
+  subscriptionInfo: {
+    flex: 1,
   },
-  statValueLarge: {
-    fontSize: 44, // było 40
-    fontWeight: '800', // było '700'
+  subscriptionName: {
+    color: 'rgba(255,255,255,0.95)',
+    fontWeight: '900',
+    fontSize: 14,
+  },
+  subscriptionMeta: {
+    marginTop: 4,
+    color: 'rgba(255,255,255,0.62)',
+    fontWeight: '700',
+    fontSize: 11,
+  },
+  subscriptionRight: {
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+  subscriptionPrice: {
+    color: 'rgba(255,255,255,0.92)',
+    fontWeight: '900',
+    fontSize: 13,
+  },
+  categoryPill: {
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+  },
+  categoryPillText: {
+    color: 'rgba(255,255,255,0.88)',
+    fontWeight: '800',
+    fontSize: 10,
+  },
+  progressTrack: {
+    marginTop: 12,
+    height: 6,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 6,
+  },
+
+  timelineWrap: {
+    marginTop: 14,
+    gap: 14,
+  },
+  timelineList: {
+    position: 'relative',
+    gap: 12,
+  },
+  timelineRail: {
+    position: 'absolute',
+    left: 84,
+    top: 8,
+    bottom: 8,
+    width: 2,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderRadius: 1,
+  },
+  timelineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  timelineLeft: {
+    width: 96,
+    alignItems: 'flex-end',
+    gap: 8,
+    paddingRight: 10,
+  },
+  timelineWhen: {
+    color: 'rgba(255,255,255,0.55)',
+    fontWeight: '900',
+    letterSpacing: 0.6,
+    fontSize: 10,
+    textTransform: 'uppercase',
+  },
+  timelineDotOuter: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: 'rgba(108, 99, 255, 0.30)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timelineDotInner: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(108, 99, 255, 0.95)',
+  },
+  timelineCard: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  timelineCardLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+    paddingRight: 12,
+  },
+  timelineServiceIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timelineServiceIconText: {
     color: '#fff',
-    marginBottom: 12,
-    letterSpacing: -0.5,
+    fontWeight: '900',
+    fontSize: 12,
   },
-  miniStatValue: {
-    fontSize: 32, // było 28
-    fontWeight: '800', // było '700'
-    color: theme.colors.text,
-    marginBottom: 4,
-    letterSpacing: -0.5,
+  timelineServiceLogo: {
+    width: 16,
+    height: 16,
+    resizeMode: 'contain',
+    borderRadius: 4,
   },
-  miniStatLabel: {
-    fontSize: 14, // było 13
-    fontWeight: '500', // dodaj
-    color: theme.colors.textSecondary,
-    letterSpacing: -0.08,
+  timelineName: {
+    color: 'rgba(255,255,255,0.9)',
+    fontWeight: '900',
+    fontSize: 13,
   },
-  sectionTitle: {
-    fontSize: 26, // było 24
-    fontWeight: '700',
-    color: theme.colors.text,
-    letterSpacing: 0.36,
-  },
-  paymentName: {
-    fontSize: 17, // było 16
-    fontWeight: '600',
-    color: theme.colors.text,
-    marginBottom: 4,
-    letterSpacing: -0.41,
-  },
-  paymentAmount: {
-    fontSize: 19, // było 18
-    fontWeight: '700',
-    color: theme.colors.text,
-    letterSpacing: -0.45,
+  timelineAmount: {
+    color: 'rgba(255,255,255,0.85)',
+    fontWeight: '900',
+    fontSize: 13,
   },
   
 });

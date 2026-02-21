@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, Platform } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
 import Input from '../../components/ui/Input';
 import Button from '../../components/ui/Button';
+import { theme } from '../../constants/theme';
 
 const categories = [
   { value: 'STREAMING', label: 'Streaming', icon: 'play-circle' },
@@ -113,10 +115,15 @@ export default function EditSubscriptionModal() {
 
   return (
     <View style={styles.container}>
+      <LinearGradient
+        colors={['#0F0C29', '#302B63', '#24243E']}
+        locations={[0, 0.55, 1]}
+        style={styles.gradientBackground}
+      />
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="close" size={28} color="#000" />
+          <Ionicons name="close" size={28} color="rgba(255,255,255,0.92)" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Edytuj subskrypcję</Text>
         <TouchableOpacity onPress={handleDelete}>
@@ -124,7 +131,7 @@ export default function EditSubscriptionModal() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content}>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <Input
           label="Nazwa *"
           value={formData.name}
@@ -147,7 +154,7 @@ export default function EditSubscriptionModal() {
               <Ionicons
                 name={cat.icon as any}
                 size={24}
-                color={formData.category === cat.value ? '#007AFF' : '#666'}
+                color={formData.category === cat.value ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.70)'}
               />
               <Text
                 style={[
@@ -225,7 +232,14 @@ export default function EditSubscriptionModal() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: theme.colors.background,
+  },
+  gradientBackground: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   header: {
     flexDirection: 'row',
@@ -235,12 +249,12 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: 'rgba(255,255,255,0.10)',
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#000',
+    color: 'rgba(255,255,255,0.92)',
   },
   content: {
     flex: 1,
@@ -249,7 +263,7 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#333',
+    color: 'rgba(255,255,255,0.75)',
     marginBottom: 12,
   },
   categoryGrid: {
@@ -261,25 +275,26 @@ const styles = StyleSheet.create({
   categoryButton: {
     width: '22%',
     aspectRatio: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
   },
   categoryButtonActive: {
-    backgroundColor: '#E8F4FF',
-    borderWidth: 2,
-    borderColor: '#007AFF',
+    backgroundColor: 'rgba(191, 168, 255, 0.28)',
+    borderColor: 'rgba(191, 168, 255, 0.45)',
   },
   categoryText: {
     fontSize: 11,
-    color: '#666',
+    color: 'rgba(255,255,255,0.70)',
     marginTop: 4,
     textAlign: 'center',
   },
   categoryTextActive: {
-    color: '#007AFF',
+    color: 'rgba(255,255,255,0.95)',
     fontWeight: '600',
   },
   row: {
@@ -293,21 +308,21 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 12,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: 'rgba(255,255,255,0.14)',
   },
   cycleButtonActive: {
-    backgroundColor: '#E8F4FF',
-    borderColor: '#007AFF',
+    backgroundColor: 'rgba(191, 168, 255, 0.28)',
+    borderColor: 'rgba(191, 168, 255, 0.45)',
   },
   cycleText: {
     fontSize: 16,
-    color: '#666',
+    color: 'rgba(255,255,255,0.70)',
     textAlign: 'center',
   },
   cycleTextActive: {
-    color: '#007AFF',
+    color: 'rgba(255,255,255,0.95)',
     fontWeight: '600',
   },
   deleteButton: {
