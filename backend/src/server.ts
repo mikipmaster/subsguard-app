@@ -38,7 +38,7 @@ async function startServer() {
     await connectDatabase();
     
     // Start listening
-    app.listen(config.port, () => {
+    app.listen(config.port, '0.0.0.0', () => {
       console.log(`
 ╔════════════════════════════════════════╗
 ║   🚀 SubsGuard API Server Running     ║

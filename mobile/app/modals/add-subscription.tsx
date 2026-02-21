@@ -32,6 +32,10 @@ export default function AddSubscriptionModal() {
     const { addSubscription } = useSubscriptionStore();
     const [loading, setLoading] = useState(false);
     const [scrollY] = useState(new Animated.Value(0));
+
+    const handleScroll = (event: any) => {
+      scrollY.setValue(event?.nativeEvent?.contentOffset?.y ?? 0);
+    };
   
     const [formData, setFormData] = useState({
       name: '',
@@ -92,14 +96,12 @@ export default function AddSubscriptionModal() {
           <View style={{ width: 28 }} />
         </View>
   
-        <ScrollView
+        <Animated.ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
-          onScroll={Animated.event(
-            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-            { useNativeDriver: false }
-          )}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
         >
           {/* Big Icon Preview */}
           <View style={styles.previewSection}>
@@ -236,7 +238,7 @@ export default function AddSubscriptionModal() {
           </View>
   
           <View style={{ height: 40 }} />
-        </ScrollView>
+        </Animated.ScrollView>
       </View>
     );
   }

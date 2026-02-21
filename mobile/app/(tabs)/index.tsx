@@ -48,9 +48,53 @@ export default function DashboardScreen() {
   const { subscriptions, fetchSubscriptions, isLoading, getTotalMonthly } = useSubscriptionStore();
   const [scrollY] = useState(new Animated.Value(0));
 
+  const handleScroll = (event: any) => {
+    scrollY.setValue(event?.nativeEvent?.contentOffset?.y ?? 0);
+  };
+
   useEffect(() => {
     fetchSubscriptions();
   }, []);
+
+  const PlaceholderMainStatCard = () => (
+    <GlassCard style={styles.mainStatCard}>
+      <View style={[styles.gradientCard, { backgroundColor: '#EAEAEA' }]}>
+        <View style={[styles.statHeader, { opacity: 0.6 }]}>
+          <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: '#D5D5D5' }} />
+          <View style={{ width: 60, height: 20, borderRadius: 10, backgroundColor: '#D5D5D5' }} />
+        </View>
+        <View style={{ width: 140, height: 16, borderRadius: 8, backgroundColor: '#D5D5D5', marginBottom: 10 }} />
+        <View style={{ width: 220, height: 40, borderRadius: 12, backgroundColor: '#D5D5D5', marginBottom: 14 }} />
+        <View style={{ width: 170, height: 14, borderRadius: 7, backgroundColor: '#D5D5D5' }} />
+      </View>
+    </GlassCard>
+  );
+
+  const PlaceholderMiniStatCard = () => (
+    <GlassCard style={styles.miniStatCard}>
+      <View style={[styles.iconCircle, { backgroundColor: '#E0E0E0' }]} />
+      <View style={{ width: 40, height: 24, borderRadius: 8, backgroundColor: '#E0E0E0', marginBottom: 6 }} />
+      <View style={{ width: 70, height: 12, borderRadius: 6, backgroundColor: '#E0E0E0' }} />
+    </GlassCard>
+  );
+
+  const PlaceholderPaymentCard = () => (
+    <GlassCard style={styles.paymentCard}>
+      <View style={styles.paymentLeft}>
+        <View style={[styles.subscriptionIcon, { backgroundColor: '#E0E0E0' }]} />
+        <View style={{ flex: 1, gap: 8 }}>
+          <View style={{ width: '60%', height: 14, borderRadius: 7, backgroundColor: '#E0E0E0' }} />
+          <View style={{ width: '40%', height: 12, borderRadius: 6, backgroundColor: '#E0E0E0' }} />
+        </View>
+      </View>
+      <View style={styles.paymentRight}>
+        <View style={{ width: 80, height: 14, borderRadius: 7, backgroundColor: '#E0E0E0', marginBottom: 6 }} />
+        <View style={{ width: 30, height: 12, borderRadius: 6, backgroundColor: '#E0E0E0' }} />
+      </View>
+    </GlassCard>
+  );
+
+  const showSkeleton = isLoading && subscriptions.length === 0;
 
   const activeSubscriptions = subscriptions.filter((s) => s.status === 'ACTIVE');
   const upcomingPayments = activeSubscriptions
@@ -135,36 +179,35 @@ export default function DashboardScreen() {
         style={styles.gradientBackground}
       />
 
-      <ScrollView
+      <Animated.ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: true }
-        )}
+        onScroll={handleScroll}
         scrollEventThrottle={16}
         refreshControl={
           <RefreshControl refreshing={isLoading} onRefresh={fetchSubscriptions} tintColor="#fff" />
         }
       >
-        <Animated.View style={[styles.header, { opacity: headerOpacity }]}>
+        <Animated.View style={[styles.header, { opacity: headerOpacity }]}> 
           <View>
             <Text style={styles.greeting}>
               Cześć, {user?.name?.split(' ')[0]}! 👋
             </Text>
             <Text style={styles.subtitle}>
-              {new Date().toLocaleDateString('pl-PL', { 
-                weekday: 'long', 
-                day: 'numeric', 
-                month: 'long' 
-              })}
+              {showSkeleton
+                ? 'Ładowanie...'
+                : new Date().toLocaleDateString('pl-PL', {
+                    weekday: 'long',
+                    day: 'numeric',
+                    month: 'long'
+                  })}
             </Text>
           </View>
-          <GlassCard 
+          <GlassCard
             style={styles.avatarButton}
-            onPress={() => router.push('/(tabs)/settings')}
-            hoverable
+            onPress={showSkeleton ? undefined : () => router.push('/(tabs)/settings')}
+            hoverable={!showSkeleton}
           >
             <Text style={styles.avatarText}>
               {user?.name?.charAt(0).toUpperCase()}
@@ -173,47 +216,59 @@ export default function DashboardScreen() {
         </Animated.View>
 
         <View style={styles.statsGrid}>
-          <GlassCard style={styles.mainStatCard}>
-            <LinearGradient
-              colors={['#667eea', '#764ba2']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.gradientCard}
-            >
-              <View style={styles.statHeader}>
-                <Ionicons name="wallet" size={28} color="#fff" />
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{user?.tier}</Text>
-                </View>
+          {showSkeleton ? (
+            <>
+              <PlaceholderMainStatCard />
+              <View style={styles.miniStatsRow}>
+                <PlaceholderMiniStatCard />
+                <PlaceholderMiniStatCard />
               </View>
-              <Text style={styles.statLabel}>Wydatki miesięczne</Text>
-              <Text style={styles.statValueLarge}>{formatCurrency(animatedMonthly)}</Text>              
-              <View style={styles.statFooter}>
-                <Ionicons name="trending-up" size={16} color="rgba(255,255,255,0.8)" />
-                <Text style={styles.statFooterText}>
-                  {formatCurrency(animatedYearly)} rocznie
-                </Text>
-              </View>
-            </LinearGradient>
-          </GlassCard>
+            </>
+          ) : (
+            <>
+              <GlassCard style={styles.mainStatCard}>
+                <LinearGradient
+                  colors={['#667eea', '#764ba2']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.gradientCard}
+                >
+                  <View style={styles.statHeader}>
+                    <Ionicons name="wallet" size={28} color="#fff" />
+                    <View style={styles.badge}>
+                      <Text style={styles.badgeText}>{user?.tier}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.statLabel}>Wydatki miesięczne</Text>
+                  <Text style={styles.statValueLarge}>{formatCurrency(animatedMonthly)}</Text>
+                  <View style={styles.statFooter}>
+                    <Ionicons name="trending-up" size={16} color="rgba(255,255,255,0.8)" />
+                    <Text style={styles.statFooterText}>
+                      {formatCurrency(animatedYearly)} rocznie
+                    </Text>
+                  </View>
+                </LinearGradient>
+              </GlassCard>
 
-          <View style={styles.miniStatsRow}>
-            <GlassCard style={styles.miniStatCard}>
-              <View style={[styles.iconCircle, { backgroundColor: '#34C759' }]}>
-                <Ionicons name="checkmark-circle" size={24} color="#fff" />
-              </View>
-              <Text style={styles.miniStatValue}>{animatedActiveCount}</Text>
-              <Text style={styles.miniStatLabel}>Aktywne</Text>
-            </GlassCard>
+              <View style={styles.miniStatsRow}>
+                <GlassCard style={styles.miniStatCard}>
+                  <View style={[styles.iconCircle, { backgroundColor: '#34C759' }]}>
+                    <Ionicons name="checkmark-circle" size={24} color="#fff" />
+                  </View>
+                  <Text style={styles.miniStatValue}>{animatedActiveCount}</Text>
+                  <Text style={styles.miniStatLabel}>Aktywne</Text>
+                </GlassCard>
 
-            <GlassCard style={styles.miniStatCard}>
-              <View style={[styles.iconCircle, { backgroundColor: '#FF9500' }]}>
-                <Ionicons name="time" size={24} color="#fff" />
+                <GlassCard style={styles.miniStatCard}>
+                  <View style={[styles.iconCircle, { backgroundColor: '#FF9500' }]}>
+                    <Ionicons name="time" size={24} color="#fff" />
+                  </View>
+                  <Text style={styles.miniStatValue}>{animatedUpcomingCount}</Text>
+                  <Text style={styles.miniStatLabel}>Zbliżające się</Text>
+                </GlassCard>
               </View>
-              <Text style={styles.miniStatValue}>{animatedUpcomingCount}</Text>
-              <Text style={styles.miniStatLabel}>Zbliżające się</Text>
-            </GlassCard>
-          </View>
+            </>
+          )}
         </View>
 
         <View style={styles.section}>
@@ -227,7 +282,15 @@ export default function DashboardScreen() {
             </GlassCard>
           </View>
 
-          {upcomingPayments.length === 0 ? null : (
+          {showSkeleton ? (
+            <>
+              <PlaceholderPaymentCard />
+              <View style={{ height: 12 }} />
+              <PlaceholderPaymentCard />
+              <View style={{ height: 12 }} />
+              <PlaceholderPaymentCard />
+            </>
+          ) : upcomingPayments.length === 0 ? null : (
             upcomingPayments.map((sub, index) => {
               const daysUntil = getDaysUntil(sub.nextBillingDate);
               const isUrgent = daysUntil <= 3;
@@ -235,7 +298,7 @@ export default function DashboardScreen() {
               const bgColor = categoryColors[sub.category] || '#95A5A6';
 
               return (
-                <GlassCard 
+                <GlassCard
                   key={sub._id}
                   style={[styles.paymentCard, index > 0 && { marginTop: 12 }]}
                   onPress={() => router.push(`/modals/edit-subscription?id=${sub._id}`)}
@@ -251,10 +314,12 @@ export default function DashboardScreen() {
                         {isUrgent && (
                           <Ionicons name="alert-circle" size={14} color={theme.colors.warning} />
                         )}
-                        <Text style={[
-                          styles.paymentDate,
-                          isUrgent && { color: theme.colors.warning, fontWeight: '600' }
-                        ]}>
+                        <Text
+                          style={[
+                            styles.paymentDate,
+                            isUrgent && { color: theme.colors.warning, fontWeight: '600' }
+                          ]}
+                        >
                           {getDaysUntilText(sub.nextBillingDate)}
                         </Text>
                       </View>
@@ -310,7 +375,7 @@ export default function DashboardScreen() {
         </View>
 
         <View style={{ height: 100 }} />
-      </ScrollView>
+      </Animated.ScrollView>
 
       <FAB 
         onPress={() => router.push('/modals/add-subscription')}

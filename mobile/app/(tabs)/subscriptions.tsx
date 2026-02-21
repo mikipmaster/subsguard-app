@@ -1,11 +1,12 @@
 import { useEffect, useState,useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, Animated, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, Animated, TextInput, PanResponder, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { formatCurrency } from '../../utils/currency';
 import { getDaysUntilText } from '../../utils/date';
+import { showToast } from '../../utils/toast';
 import GlassCard from '../../components/ui/GlassCard';
 import FAB from '../../components/ui/FAB';
 import { theme } from '../../constants/theme';
@@ -16,11 +17,15 @@ interface AnimatedCardProps {
   children: React.ReactNode;
   index: number;
   onPress: () => void;
+  onDelete: () => void;
 }
 
-function AnimatedCard({ children, index, onPress }: AnimatedCardProps) {
+function AnimatedCard({ children, index, onPress, onDelete }: AnimatedCardProps) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
+  const translateX = useRef(new Animated.Value(0)).current;
+  const opened = useRef(false);
+  const maxSwipe = 92;
 
   useEffect(() => {
     Animated.parallel([
@@ -39,30 +44,98 @@ function AnimatedCard({ children, index, onPress }: AnimatedCardProps) {
     ]).start();
   }, [index]);
 
+  const closeSwipe = () => {
+    opened.current = false;
+    Animated.spring(translateX, {
+      toValue: 0,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const openSwipe = () => {
+    opened.current = true;
+    Animated.spring(translateX, {
+      toValue: -maxSwipe,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) => {
+        const isHorizontal = Math.abs(gesture.dx) > 8 && Math.abs(gesture.dy) < 10;
+        return isHorizontal;
+      },
+      onPanResponderMove: (_, gesture) => {
+        const dx = Math.min(0, Math.max(gesture.dx, -maxSwipe));
+        translateX.setValue(dx);
+      },
+      onPanResponderRelease: (_, gesture) => {
+        const shouldOpen = gesture.dx < -maxSwipe / 2;
+        if (shouldOpen) openSwipe();
+        else closeSwipe();
+      },
+      onPanResponderTerminate: () => {
+        closeSwipe();
+      },
+    })
+  ).current;
+
   return (
-    <Animated.View
-      style={{
-        opacity: fadeAnim,
-        transform: [{ translateY: slideAnim }],
-      }}
-    >
-      <GlassCard 
-        style={styles.subscriptionCard}
-        onPress={onPress}
-        hoverable
-      >
-        {children}
-      </GlassCard>
+    <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+      <View style={styles.swipeContainer}>
+        <View style={styles.deleteUnderlay}>
+          <TouchableOpacity
+            style={styles.deleteButton}
+            activeOpacity={0.8}
+            onPress={() => {
+              Alert.alert('Usuń subskrypcję', 'Na pewno chcesz usunąć tę subskrypcję?', [
+                { text: 'Anuluj', style: 'cancel', onPress: closeSwipe },
+                {
+                  text: 'Usuń',
+                  style: 'destructive',
+                  onPress: () => {
+                    closeSwipe();
+                    onDelete();
+                  }
+                }
+              ]);
+            }}
+          >
+            <Ionicons name="trash" size={22} color="#fff" />
+            <Text style={styles.deleteText}>Usuń</Text>
+          </TouchableOpacity>
+        </View>
+
+        <Animated.View
+          style={{ transform: [{ translateX }] }}
+          {...panResponder.panHandlers}
+        >
+          <GlassCard style={[styles.subscriptionCard, styles.subscriptionCardSolid]} onPress={() => {
+            if (opened.current) {
+              closeSwipe();
+              return;
+            }
+            onPress();
+          }} hoverable>
+            {children}
+          </GlassCard>
+        </Animated.View>
+      </View>
     </Animated.View>
   );
 }
 
 
 export default function SubscriptionsScreen() {
-  const { subscriptions, fetchSubscriptions, isLoading } = useSubscriptionStore();
+  const { subscriptions, fetchSubscriptions, isLoading, deleteSubscription } = useSubscriptionStore();
   const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'CANCELLED'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [scrollY] = useState(new Animated.Value(0));
+
+  const handleScroll = (event: any) => {
+    scrollY.setValue(event?.nativeEvent?.contentOffset?.y ?? 0);
+  };
 
   useEffect(() => {
     fetchSubscriptions();
@@ -210,14 +283,11 @@ const groupedByCategory = (filteredSubscriptions as any).reduce((acc: any, sub: 
         </LinearGradient>
       </Animated.View>
 
-      <ScrollView
+      <Animated.ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: true }
-        )}
+        onScroll={handleScroll}
         scrollEventThrottle={16}
         refreshControl={
           <RefreshControl refreshing={isLoading} onRefresh={fetchSubscriptions} tintColor="#fff" />
@@ -346,6 +416,14 @@ const groupedByCategory = (filteredSubscriptions as any).reduce((acc: any, sub: 
                     key={sub._id}
                     index={index}
                     onPress={() => router.push(`/modals/edit-subscription?id=${sub._id}`)}
+                    onDelete={async () => {
+                      try {
+                        await deleteSubscription(sub._id);
+                        showToast.success('Subskrypcja usunięta');
+                      } catch (e: any) {
+                        showToast.error(e?.message || 'Nie udało się usunąć subskrypcji');
+                      }
+                    }}
                   >
                     <View style={styles.cardContent}>
                       <View style={[styles.subscriptionIcon, { backgroundColor: bgColor }]}>
@@ -373,7 +451,7 @@ const groupedByCategory = (filteredSubscriptions as any).reduce((acc: any, sub: 
             </View>
           ))
         )}
-      </ScrollView>
+      </Animated.ScrollView>
 
       {/* FAB */}
       <FAB 
@@ -554,7 +632,40 @@ const styles = StyleSheet.create({
     color: theme.colors.textSecondary,
   },
   subscriptionCard: {
+    marginBottom: 0,
+  },
+  subscriptionCardSolid: {
+    backgroundColor: theme.colors.surface,
+  },
+  swipeContainer: {
+    position: 'relative',
     marginBottom: 12,
+    borderRadius: theme.radius.xl,
+    overflow: 'hidden',
+    backgroundColor: theme.colors.surface,
+  },
+  deleteUnderlay: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: 92,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteButton: {
+    width: 92,
+    height: '100%',
+    backgroundColor: '#FF3B30',
+    borderRadius: theme.radius.l,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+  },
+  deleteText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
   },
   cardContent: {
     flexDirection: 'row',

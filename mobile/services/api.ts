@@ -1,17 +1,37 @@
 import axios from 'axios';
+import Constants from 'expo-constants';
 import { storage } from './storage';
 
-// Wykryj czy jesteśmy w przeglądarce czy na telefonie
-const isWeb = typeof window !== 'undefined' && window.location;
-const API_URL = isWeb 
-  ? 'http://localhost:3000/api'  // Dla przeglądarki
-  : 'http://192.168.0.12:3000/api'; // Dla telefonu (ZMIEŃ NA SWOJE IP!)
+const isWeb = typeof window !== 'undefined' && !!window.location;
+
+const getApiUrl = () => {
+  const envUrl = process.env.EXPO_PUBLIC_API_URL;
+  if (envUrl) return envUrl;
+
+  if (isWeb) {
+    const host = window.location.hostname;
+    return `http://${host}:3000/api`;
+  }
+
+  const hostUri = Constants.expoConfig?.hostUri;
+  const debuggerHost = (Constants as any).expoConfig?.debuggerHost ?? (Constants as any).manifest2?.extra?.expoClient?.debuggerHost;
+  const rawHost = hostUri ?? debuggerHost;
+
+  const hostname = typeof rawHost === 'string' ? rawHost.split(':')[0] : null;
+  if (hostname) return `http://${hostname}:3000/api`;
+
+  return 'http://localhost:3000/api';
+};
+
+const API_URL = getApiUrl();
 
 console.log('🔗 API URL:', API_URL);
 
+const API_TIMEOUT_MS = isWeb ? 10000 : 30000;
+
 const api = axios.create({
   baseURL: API_URL,
-  timeout: 10000,
+  timeout: API_TIMEOUT_MS,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -40,7 +60,15 @@ api.interceptors.response.use(
     return response;
   },
   async (error) => {
-    console.error('❌ Response error:', error.response?.status, error.message);
+    const errorPayload = {
+      status: error.response?.status,
+      message: error.message,
+      code: error.code,
+      baseURL: error.config?.baseURL,
+      url: error.config?.url,
+      method: error.config?.method,
+    };
+    console.error('❌ Response error:', errorPayload);
     
     const originalRequest = error.config;
 
@@ -51,14 +79,19 @@ api.interceptors.response.use(
         const refreshToken = await storage.getItem('refreshToken');
         if (!refreshToken) throw new Error('No refresh token');
 
-        const { data } = await axios.post(`${API_URL}/auth/refresh-token`, {
+        const { data: responseBody } = await api.post('/auth/refresh-token', {
           refreshToken,
         });
 
-        await storage.setItem('accessToken', data.accessToken);
-        await storage.setItem('refreshToken', data.refreshToken);
+        const tokens = responseBody?.data;
+        if (!tokens?.accessToken || !tokens?.refreshToken) {
+          throw new Error('Refresh token failed');
+        }
 
-        originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
+        await storage.setItem('accessToken', tokens.accessToken);
+        await storage.setItem('refreshToken', tokens.refreshToken);
+
+        originalRequest.headers.Authorization = `Bearer ${tokens.accessToken}`;
         return api(originalRequest);
       } catch (refreshError) {
         await storage.removeItem('accessToken');

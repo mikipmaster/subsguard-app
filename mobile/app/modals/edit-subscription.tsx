@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, Platform } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
@@ -75,28 +75,32 @@ export default function EditSubscriptionModal() {
   };
 
   const handleDelete = () => {
-    Alert.alert(
-      'Usuń subskrypcję',
-      'Czy na pewno chcesz usunąć tę subskrypcję?',
-      [
-        { text: 'Anuluj', style: 'cancel' },
-        {
-          text: 'Usuń',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setDeleting(true);
-              await deleteSubscription(id as string);
-              router.back();
-            } catch (error: any) {
-              Alert.alert('Błąd', error.message);
-            } finally {
-              setDeleting(false);
-            }
-          },
-        },
-      ]
-    );
+    const runDelete = async () => {
+      try {
+        setDeleting(true);
+        await deleteSubscription(id as string);
+        router.back();
+      } catch (error: any) {
+        if (Platform.OS === 'web') {
+          window.alert(error?.message ?? 'Failed to delete subscription');
+        } else {
+          Alert.alert('Błąd', error.message);
+        }
+      } finally {
+        setDeleting(false);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm('Czy na pewno chcesz usunąć tę subskrypcję?');
+      if (confirmed) runDelete();
+      return;
+    }
+
+    Alert.alert('Usuń subskrypcję', 'Czy na pewno chcesz usunąć tę subskrypcję?', [
+      { text: 'Anuluj', style: 'cancel' },
+      { text: 'Usuń', style: 'destructive', onPress: runDelete },
+    ]);
   };
 
   if (!subscription) {

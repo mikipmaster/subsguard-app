@@ -2,8 +2,7 @@ import { Alert } from 'react-native';
 
 export const showToast = {
   success: (message: string, title: string = 'Sukces') => {
-    // Na web użyj native alert, na mobile będzie lepiej wyglądać
-    if (typeof window !== 'undefined') {
+    if (typeof document !== 'undefined') {
       // Browser toast (prosty)
       const toast = document.createElement('div');
       toast.innerHTML = `
@@ -36,7 +35,7 @@ export const showToast = {
   },
   
   error: (message: string, title: string = 'Błąd') => {
-    if (typeof window !== 'undefined') {
+    if (typeof document !== 'undefined') {
       const toast = document.createElement('div');
       toast.innerHTML = `
         <div style="
@@ -64,7 +63,7 @@ export const showToast = {
   },
   
   info: (message: string, title: string = 'Info') => {
-    if (typeof window !== 'undefined') {
+    if (typeof document !== 'undefined') {
       const toast = document.createElement('div');
       toast.innerHTML = `
         <div style="

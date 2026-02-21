@@ -81,12 +81,21 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
   },
 
   deleteSubscription: async (id) => {
+    const current = get().subscriptions;
+    const toRemove = current.find((s) => s._id === id);
+
+    set((state) => ({
+      subscriptions: state.subscriptions.filter((sub) => sub._id !== id),
+    }));
+
     try {
       await api.delete(`/subscriptions/${id}`);
-      set((state) => ({
-        subscriptions: state.subscriptions.filter((sub) => sub._id !== id),
-      }));
     } catch (error: any) {
+      if (toRemove) {
+        set((state) => ({
+          subscriptions: [toRemove, ...state.subscriptions],
+        }));
+      }
       throw new Error(error.response?.data?.error?.message || error.response?.data?.message || 'Failed to delete subscription');
     }
   },
