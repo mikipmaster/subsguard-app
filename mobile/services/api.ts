@@ -1,8 +1,9 @@
 import axios from 'axios';
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 import { storage } from './storage';
 
-const isWeb = typeof window !== 'undefined' && !!window.location;
+const isWeb = Platform.OS === 'web';
 
 const getApiUrl = () => {
   const envUrl = process.env.EXPO_PUBLIC_API_URL;
@@ -14,7 +15,10 @@ const getApiUrl = () => {
   }
 
   const hostUri = Constants.expoConfig?.hostUri;
-  const debuggerHost = (Constants as any).expoConfig?.debuggerHost ?? (Constants as any).manifest2?.extra?.expoClient?.debuggerHost;
+  const debuggerHost =
+    (Constants as any).expoConfig?.debuggerHost ??
+    (Constants as any).manifest2?.extra?.expoClient?.debuggerHost ??
+    (Constants as any).manifest?.debuggerHost;
   const rawHost = hostUri ?? debuggerHost;
 
   const hostname = typeof rawHost === 'string' ? rawHost.split(':')[0] : null;
@@ -29,6 +33,16 @@ console.log('🔗 API URL:', API_URL);
 
 const API_TIMEOUT_MS = isWeb ? 10000 : 30000;
 
+const isPublicAuthEndpoint = (url: string) => {
+  const u = String(url ?? '');
+  return (
+    u === '/auth/login' ||
+    u === '/auth/register' ||
+    u === '/auth/refresh-token' ||
+    u === '/auth/logout'
+  );
+};
+
 const api = axios.create({
   baseURL: API_URL,
   timeout: API_TIMEOUT_MS,
@@ -40,9 +54,14 @@ const api = axios.create({
 // Request interceptor
 api.interceptors.request.use(
   async (config) => {
-    const token = await storage.getItem('accessToken');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    const url = String(config.url ?? '');
+    const isAuthPublic = isPublicAuthEndpoint(url);
+
+    if (!isAuthPublic) {
+      const token = await storage.getItem('accessToken');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
     }
     console.log('📤 Request:', config.method?.toUpperCase(), config.url);
     return config;
@@ -72,7 +91,10 @@ api.interceptors.response.use(
     
     const originalRequest = error.config;
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    const originalUrl = String(originalRequest?.url ?? '');
+    const isAuthPublic = isPublicAuthEndpoint(originalUrl);
+
+    if (error.response?.status === 401 && !originalRequest._retry && !isAuthPublic) {
       originalRequest._retry = true;
 
       try {

@@ -4,6 +4,8 @@ import { router } from 'expo-router';
 import { useAuthStore } from '../../store/authStore';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
+import { LinearGradient } from 'expo-linear-gradient';
+import GlassCard from '../../components/ui/GlassCard';
 
 export default function RegisterScreen() {
   const [name, setName] = useState('');
@@ -15,37 +17,28 @@ export default function RegisterScreen() {
   const register = useAuthStore((state) => state.register);
 
   const handleRegister = async () => {
-    console.log('🔵 handleRegister CALLED!');
-    console.log('📝 Data:', { name, email, password, confirmPassword });
-    
-    if (!name || !email || !password || !confirmPassword) {
-      console.log('❌ Empty fields');
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!name || !normalizedEmail || !password || !confirmPassword) {
       Alert.alert('Błąd', 'Wypełnij wszystkie pola');
       return;
     }
 
     if (password !== confirmPassword) {
-      console.log('❌ Passwords dont match');
       Alert.alert('Błąd', 'Hasła nie są takie same');
       return;
     }
 
     if (password.length < 8) {
-      console.log('❌ Password too short');
       Alert.alert('Błąd', 'Hasło musi mieć min. 8 znaków');
       return;
     }
-
-    console.log('✅ Validation OK, calling register()...');
     
     try {
       setLoading(true);
-      await register(name, email, password);
-      console.log('✅ Register success!');
+      await register(name, normalizedEmail, password);
       Alert.alert('Sukces', 'Rejestracja zakończona!');
       router.replace('/(tabs)');
     } catch (error: any) {
-      console.error('❌ Register error:', error);
       Alert.alert('Błąd rejestracji', error.message);
     } finally {
       setLoading(false);
@@ -53,55 +46,63 @@ export default function RegisterScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
-    >
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.content}>
-          <Text style={styles.title}>🚀 Dołącz do nas</Text>
-          <Text style={styles.subtitle}>Stwórz konto w SubsGuard</Text>
+    <View style={styles.container}>
+      <LinearGradient
+        colors={['#0F0C29', '#302B63', '#24243E']}
+        locations={[0, 0.55, 1]}
+        style={styles.gradientBackground}
+      />
 
-          <View style={styles.form}>
-            <Input
-              label="Imię i nazwisko"
-              value={name}
-              onChangeText={setName}
-              placeholder="Jan Kowalski"
-            />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboard}
+      >
+        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+          <View style={styles.content}>
+            <Text style={styles.title}>🚀 Dołącz do nas</Text>
+            <Text style={styles.subtitle}>Stwórz konto w SubsGuard</Text>
 
-            <Input
-              label="Email"
-              value={email}
-              onChangeText={setEmail}
-              placeholder="twoj@email.com"
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
+            <GlassCard style={styles.formCard}>
+              <Input
+                label="Imię i nazwisko"
+                value={name}
+                onChangeText={setName}
+                placeholder="Jan Kowalski"
+              />
 
-            <Input
-              label="Hasło"
-              value={password}
-              onChangeText={setPassword}
-              placeholder="Min. 8 znaków"
-              secureTextEntry
-              autoCapitalize="none"
-            />
+              <Input
+                label="Email"
+                value={email}
+                onChangeText={setEmail}
+                placeholder="twoj@email.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
 
-            <Input
-              label="Potwierdź hasło"
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              placeholder="Powtórz hasło"
-              secureTextEntry
-              autoCapitalize="none"
-            />
+              <Input
+                label="Hasło"
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Min. 8 znaków"
+                secureTextEntry
+                autoCapitalize="none"
+              />
 
-            <Button
-              title="Zarejestruj się"
-              onPress={handleRegister}
-              loading={loading}
-            />
+              <Input
+                label="Potwierdź hasło"
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                placeholder="Powtórz hasło"
+                secureTextEntry
+                autoCapitalize="none"
+              />
+
+              <Button
+                title="Zarejestruj się"
+                onPress={handleRegister}
+                loading={loading}
+              />
+            </GlassCard>
 
             <View style={styles.loginPrompt}>
               <Text style={styles.loginText}>Masz już konto? </Text>
@@ -112,17 +113,29 @@ export default function RegisterScreen() {
                 Zaloguj się
               </Text>
             </View>
+
+            <View style={{ height: 90 }} />
           </View>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#0F0C29',
+  },
+  gradientBackground: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  keyboard: {
+    flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
@@ -136,18 +149,21 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: '#000',
+    color: 'rgba(255,255,255,0.95)',
     marginBottom: 8,
     textAlign: 'center',
   },
   subtitle: {
     fontSize: 16,
-    color: '#666',
-    marginBottom: 40,
+    color: 'rgba(255,255,255,0.65)',
+    marginBottom: 24,
     textAlign: 'center',
   },
-  form: {
-    width: '100%',
+  formCard: {
+    padding: 18,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 20,
   },
   loginPrompt: {
     flexDirection: 'row',
@@ -156,11 +172,11 @@ const styles = StyleSheet.create({
   },
   loginText: {
     fontSize: 14,
-    color: '#666',
+    color: 'rgba(255,255,255,0.65)',
   },
   loginLink: {
     fontSize: 14,
-    color: '#007AFF',
+    color: 'rgba(191, 168, 255, 0.95)',
     fontWeight: '600',
   },
 });

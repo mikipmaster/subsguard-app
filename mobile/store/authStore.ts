@@ -25,6 +25,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   isLoading: false,
   isAuthenticated: false,
 
+  // NOTE: When mobile can't reach the API (LAN / firewall / wrong host), axios usually throws
+  // ECONNABORTED (timeout) or a generic Network Error. We surface baseURL to make debugging easier.
+
   login: async (email: string, password: string) => {
     try {
       set({ isLoading: true });
@@ -40,7 +43,23 @@ export const useAuthStore = create<AuthState>((set) => ({
       set({ user: payload.user, isAuthenticated: true, isLoading: false });
     } catch (error: any) {
       set({ isLoading: false });
-      throw new Error(error.response?.data?.error?.message || error.response?.data?.message || 'Login failed');
+      const backendMessage = error.response?.data?.error?.message || error.response?.data?.message;
+      if (backendMessage) throw new Error(backendMessage);
+
+      const code = error?.code;
+      const baseURL = error?.config?.baseURL;
+      const isTimeout = code === 'ECONNABORTED' || /timeout/i.test(String(error?.message));
+      const isNetworkError = /network error/i.test(String(error?.message));
+
+      if (isTimeout || isNetworkError) {
+        const hint =
+          `Brak połączenia z API (${baseURL ?? 'unknown'}). ` +
+          `Sprawdź czy telefon i komputer są w tej samej sieci Wi‑Fi, ` +
+          `czy nie masz VPN, oraz czy firewall nie blokuje portu 3000.`;
+        throw new Error(hint);
+      }
+
+      throw new Error(error?.message || 'Login failed');
     }
   },
 
@@ -59,7 +78,23 @@ export const useAuthStore = create<AuthState>((set) => ({
       set({ user: payload.user, isAuthenticated: true, isLoading: false });
     } catch (error: any) {
       set({ isLoading: false });
-      throw new Error(error.response?.data?.error?.message || error.response?.data?.message || 'Registration failed');
+      const backendMessage = error.response?.data?.error?.message || error.response?.data?.message;
+      if (backendMessage) throw new Error(backendMessage);
+
+      const code = error?.code;
+      const baseURL = error?.config?.baseURL;
+      const isTimeout = code === 'ECONNABORTED' || /timeout/i.test(String(error?.message));
+      const isNetworkError = /network error/i.test(String(error?.message));
+
+      if (isTimeout || isNetworkError) {
+        const hint =
+          `Brak połączenia z API (${baseURL ?? 'unknown'}). ` +
+          `Sprawdź czy telefon i komputer są w tej samej sieci Wi‑Fi, ` +
+          `czy nie masz VPN, oraz czy firewall nie blokuje portu 3000.`;
+        throw new Error(hint);
+      }
+
+      throw new Error(error?.message || 'Registration failed');
     }
   },
 
