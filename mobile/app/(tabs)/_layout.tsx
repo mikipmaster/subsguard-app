@@ -2,11 +2,10 @@ import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Platform, StyleSheet, View } from 'react-native';
 import { useAuthStore } from '../../store/authStore';
-import { useNotifications } from '../../hooks/useNotifications';
 
 export default function TabLayout() {
   const { isAuthenticated } = useAuthStore();
-  useNotifications(isAuthenticated);
+  void isAuthenticated;
 
   return (
     <Tabs

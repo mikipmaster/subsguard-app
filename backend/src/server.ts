@@ -13,7 +13,6 @@ import { connectDatabase } from './config/db.config';
 import { config } from './config/app.config';
 import routes from './routes';
 import { errorHandler } from './middleware/errorHandler';
-import { runPushNotificationsSweep } from './services/pushNotifications.service';
 
 // Create Express app
 const app = express();
@@ -37,10 +36,6 @@ async function startServer() {
   try {
     // Connect to database
     await connectDatabase();
-
-    setInterval(() => {
-      runPushNotificationsSweep().catch(() => null);
-    }, 60_000);
     
     // Start listening
     app.listen(config.port, '0.0.0.0', () => {

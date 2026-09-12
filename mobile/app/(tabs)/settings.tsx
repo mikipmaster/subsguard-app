@@ -81,16 +81,6 @@ export default function SettingsScreen() {
           <Text style={styles.sectionTitle}>Ogólne</Text>
 
           <GlassCard style={styles.listCard}>
-            <TouchableOpacity style={styles.settingItem} onPress={() => router.push('/settings/notifications')}>
-              <View style={styles.settingLeft}>
-                <Ionicons name="notifications-outline" size={20} color="rgba(191, 168, 255, 0.95)" />
-                <Text style={styles.settingText}>Powiadomienia</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.55)" />
-            </TouchableOpacity>
-
-            <View style={styles.itemDivider} />
-
             <TouchableOpacity style={styles.settingItem} onPress={() => router.push('/settings/currency')}>
               <View style={styles.settingLeft}>
                 <Ionicons name="cash-outline" size={20} color="rgba(191, 168, 255, 0.95)" />
@@ -122,16 +112,6 @@ export default function SettingsScreen() {
           <Text style={styles.sectionTitle}>Konto</Text>
 
           <GlassCard style={styles.listCard}>
-            <TouchableOpacity style={styles.settingItem} onPress={() => router.push('/settings/premium')}>
-              <View style={styles.settingLeft}>
-                <Ionicons name="card-outline" size={20} color="rgba(191, 168, 255, 0.95)" />
-                <Text style={styles.settingText}>Premium</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.55)" />
-            </TouchableOpacity>
-
-            <View style={styles.itemDivider} />
-
             <TouchableOpacity style={styles.settingItem} onPress={() => router.push('/settings/privacy')}>
               <View style={styles.settingLeft}>
                 <Ionicons name="shield-checkmark-outline" size={20} color="rgba(191, 168, 255, 0.95)" />
