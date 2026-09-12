@@ -5,6 +5,7 @@ export interface INotification extends Document {
   subscriptionId: mongoose.Types.ObjectId;
   type: 'EMAIL' | 'PUSH';
   status: 'SENT' | 'FAILED' | 'PENDING';
+  key: string;
   sentAt?: Date;
   failureReason?: string;
   metadata?: any;
@@ -15,11 +16,13 @@ const NotificationSchema = new Schema<INotification>({
   subscriptionId: { type: Schema.Types.ObjectId, ref: 'Subscription', required: true },
   type: { type: String, enum: ['EMAIL', 'PUSH'], required: true },
   status: { type: String, enum: ['SENT', 'FAILED', 'PENDING'], default: 'PENDING' },
+  key: { type: String, required: true },
   sentAt: Date,
   failureReason: String,
   metadata: Schema.Types.Mixed
 }, { timestamps: true });
 
 NotificationSchema.index({ userId: 1, sentAt: -1 });
+NotificationSchema.index({ subscriptionId: 1, type: 1, key: 1 }, { unique: true, sparse: true });
 
 export default mongoose.model<INotification>('Notification', NotificationSchema);

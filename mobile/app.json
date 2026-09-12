@@ -6,10 +6,17 @@
     "orientation": "portrait",
     "scheme": "subsguard",
     "userInterfaceStyle": "light",
+    "extra": {
+      "eas": {
+        "projectId": "7da47ce9-70b0-4ea2-be57-43fae6cb1943"
+      },
+      "router": {}
+    },
     "plugins": [
       "expo-router",
       "expo-asset",
       "expo-font"
-    ]
+    ],
+    "owner": "mikipmaster"
   }
 }

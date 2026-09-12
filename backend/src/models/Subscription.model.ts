@@ -8,10 +8,13 @@ export interface ISubscription extends Document {
   price: number;
   currency: string;
   billingCycle: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY';
+  startAt?: Date;
   startDate: Date;
   nextBillingDate: Date;
   status: 'ACTIVE' | 'CANCELLED' | 'PAUSED' | 'EXPIRED';
   reminderDays: number;
+  reminders?: { daysBefore: number; time: string; enabled: boolean }[];
+  customNotifications?: { notifyAt: Date; note?: string; enabled: boolean }[];
   notes?: string;
   logoUrl?: string;
   websiteUrl?: string;
@@ -55,6 +58,9 @@ const SubscriptionSchema = new Schema<ISubscription>({
     enum: ['DAILY', 'WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY'],
     required: true 
   },
+  startAt: {
+    type: Date,
+  },
   startDate: { 
     type: Date, 
     required: true,
@@ -76,7 +82,25 @@ const SubscriptionSchema = new Schema<ISubscription>({
     min: 0,
     max: 14 
   },
-  notes: String,
+  reminders: [
+    {
+      daysBefore: { type: Number, min: 0, max: 365, required: true },
+      time: { type: String, required: true },
+      enabled: { type: Boolean, default: true },
+    },
+  ],
+  customNotifications: [
+    {
+      notifyAt: { type: Date, required: true },
+      note: { type: String, trim: true, maxlength: 500 },
+      enabled: { type: Boolean, default: true },
+    },
+  ],
+  notes: {
+    type: String,
+    trim: true,
+    maxlength: 500,
+  },
   logoUrl: String,
   websiteUrl: String,
   tags: [String],

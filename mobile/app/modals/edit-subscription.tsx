@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, Platform, TextInput } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,6 +27,22 @@ const billingCycles = [
   { value: 'QUARTERLY', label: 'Kwartalnie' },
 ];
 
+function pad2(n: number) {
+  return String(n).padStart(2, '0');
+}
+
+function toLocalDateInput(value: unknown): string {
+  const d = value instanceof Date ? value : new Date(String(value ?? ''));
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function toLocalTimeInput(value: unknown): string {
+  const d = value instanceof Date ? value : new Date(String(value ?? ''));
+  if (Number.isNaN(d.getTime())) return '';
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
 export default function EditSubscriptionModal() {
   const { id } = useLocalSearchParams();
   const { subscriptions, updateSubscription, deleteSubscription } = useSubscriptionStore();
@@ -41,6 +57,22 @@ export default function EditSubscriptionModal() {
     price: subscription?.price.toString() || '',
     currency: subscription?.currency || 'PLN',
     billingCycle: subscription?.billingCycle || 'MONTHLY',
+    useStartAt: !!(subscription as any)?.startAt,
+    startDate: (subscription as any)?.startAt
+      ? toLocalDateInput((subscription as any).startAt)
+      : new Date(subscription?.startDate || new Date()).toISOString().slice(0, 10),
+    startTime: (subscription as any)?.startAt
+      ? toLocalTimeInput((subscription as any).startAt)
+      : '09:00',
+    customNotificationsDraft: Array.isArray((subscription as any)?.customNotifications)
+      ? ((subscription as any).customNotifications as any[]).map((cn) => ({
+          date: toLocalDateInput(cn?.notifyAt),
+          time: toLocalTimeInput(cn?.notifyAt),
+          note: String(cn?.note ?? ''),
+        }))
+      : ([] as { date: string; time: string; note: string }[]),
+    notes: subscription?.notes || '',
+    reminders: (subscription as any)?.reminders || [],
   });
 
   useEffect(() => {
@@ -51,9 +83,45 @@ export default function EditSubscriptionModal() {
         price: subscription.price.toString(),
         currency: subscription.currency,
         billingCycle: subscription.billingCycle,
+        useStartAt: !!(subscription as any)?.startAt,
+        startDate: (subscription as any)?.startAt
+          ? toLocalDateInput((subscription as any).startAt)
+          : new Date((subscription as any).startDate || new Date()).toISOString().slice(0, 10),
+        startTime: (subscription as any)?.startAt
+          ? toLocalTimeInput((subscription as any).startAt)
+          : '09:00',
+        customNotificationsDraft: Array.isArray((subscription as any)?.customNotifications)
+          ? ((subscription as any).customNotifications as any[]).map((cn) => ({
+              date: toLocalDateInput(cn?.notifyAt),
+              time: toLocalTimeInput(cn?.notifyAt),
+              note: String(cn?.note ?? ''),
+            }))
+          : ([] as { date: string; time: string; note: string }[]),
+        notes: subscription.notes || '',
+        reminders: (subscription as any)?.reminders || [],
       });
     }
   }, [subscription]);
+
+  const toNotifyAtIso = (date: string, time: string) => {
+    const d = String(date ?? '').trim();
+    const t = String(time ?? '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
+    if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(t)) return null;
+    const dt = new Date(`${d}T${t}:00`);
+    if (Number.isNaN(dt.getTime())) return null;
+    return dt.toISOString();
+  };
+
+  const toStartAtIso = () => {
+    const date = String((formData as any).startDate ?? '').trim();
+    const time = String((formData as any).startTime ?? '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+    if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(time)) return null;
+    const d = new Date(`${date}T${time}:00`);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toISOString();
+  };
 
   const handleUpdate = async () => {
     if (!formData.name || !formData.price) {
@@ -63,9 +131,29 @@ export default function EditSubscriptionModal() {
 
     try {
       setLoading(true);
+      const useStartAt = !!(formData as any).useStartAt;
+      const startAt = useStartAt ? toStartAtIso() : null;
+      if (useStartAt && !startAt) {
+        throw new Error('Nieprawidłowa data startu lub godzina (YYYY-MM-DD oraz HH:MM)');
+      }
+
+      const customNotifications = Array.isArray((formData as any).customNotificationsDraft)
+        ? ((formData as any).customNotificationsDraft as any[])
+            .map((n) => {
+              const notifyAt = toNotifyAtIso(n?.date, n?.time);
+              if (!notifyAt) return null;
+              const note = String(n?.note ?? '').trim();
+              return { notifyAt, note: note || undefined, enabled: true };
+            })
+            .filter(Boolean)
+        : [];
+
       await updateSubscription(id as string, {
         ...formData,
+        ...(useStartAt ? { startAt } : { startAt: null }),
+        customNotifications,
         price: parseFloat(formData.price),
+        notes: formData.notes?.trim() ? formData.notes.trim() : undefined,
       });
       Alert.alert('Sukces', 'Subskrypcja zaktualizowana!');
       router.back();
@@ -168,6 +256,209 @@ export default function EditSubscriptionModal() {
           ))}
         </View>
 
+        <Text style={styles.label}>Dokładne powiadomienie</Text>
+        <View style={styles.remindersBox}>
+          {Array.isArray((formData as any).customNotificationsDraft) && (formData as any).customNotificationsDraft.length > 0 ? (
+            (formData as any).customNotificationsDraft.map((n: any, idx: number) => (
+              <View key={idx} style={styles.customRow}>
+                <View style={styles.reminderInputs}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.reminderMiniLabel}>Data</Text>
+                    <TextInput
+                      style={styles.reminderInput}
+                      value={String(n?.date ?? '')}
+                      onChangeText={(text) => {
+                        const next = [...((formData as any).customNotificationsDraft as any[])];
+                        next[idx] = { ...next[idx], date: text };
+                        setFormData({ ...(formData as any), customNotificationsDraft: next } as any);
+                      }}
+                      placeholder="YYYY-MM-DD"
+                      placeholderTextColor="rgba(255,255,255,0.45)"
+                      autoCapitalize="none"
+                    />
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.reminderMiniLabel}>Godzina</Text>
+                    <TextInput
+                      style={styles.reminderInput}
+                      value={String(n?.time ?? '')}
+                      onChangeText={(text) => {
+                        const next = [...((formData as any).customNotificationsDraft as any[])];
+                        next[idx] = { ...next[idx], time: text };
+                        setFormData({ ...(formData as any), customNotificationsDraft: next } as any);
+                      }}
+                      placeholder="09:00"
+                      placeholderTextColor="rgba(255,255,255,0.45)"
+                      autoCapitalize="none"
+                    />
+                  </View>
+                </View>
+
+                <View style={{ marginTop: 10 }}>
+                  <Text style={styles.reminderMiniLabel}>Notatka</Text>
+                  <TextInput
+                    style={styles.reminderInput}
+                    value={String(n?.note ?? '')}
+                    onChangeText={(text) => {
+                      const next = [...((formData as any).customNotificationsDraft as any[])];
+                      next[idx] = { ...next[idx], note: text };
+                      setFormData({ ...(formData as any), customNotificationsDraft: next } as any);
+                    }}
+                    placeholder="Treść powiadomienia…"
+                    placeholderTextColor="rgba(255,255,255,0.45)"
+                    autoCapitalize="sentences"
+                    maxLength={500}
+                  />
+                </View>
+
+                <TouchableOpacity
+                  style={styles.reminderRemove}
+                  onPress={() => {
+                    const next = [...((formData as any).customNotificationsDraft as any[])];
+                    next.splice(idx, 1);
+                    setFormData({ ...(formData as any), customNotificationsDraft: next } as any);
+                  }}
+                >
+                  <Ionicons name="trash-outline" size={18} color="#FF3B30" />
+                </TouchableOpacity>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.remindersEmpty}>Dodaj jednorazowe powiadomienie na konkretny dzień i godzinę.</Text>
+          )}
+
+          <TouchableOpacity
+            style={styles.reminderAdd}
+            onPress={() => {
+              const next = Array.isArray((formData as any).customNotificationsDraft)
+                ? [...((formData as any).customNotificationsDraft as any[])]
+                : [];
+              next.push({
+                date: new Date().toISOString().slice(0, 10),
+                time: '09:00',
+                note: '',
+              });
+              setFormData({ ...(formData as any), customNotificationsDraft: next } as any);
+            }}
+          >
+            <Ionicons name="add" size={18} color="rgba(255,255,255,0.92)" />
+            <Text style={styles.reminderAddText}>Dodaj powiadomienie</Text>
+          </TouchableOpacity>
+        </View>
+
+        <TouchableOpacity
+          style={styles.startToggleRow}
+          activeOpacity={0.9}
+          onPress={() => setFormData({ ...formData, useStartAt: !(formData as any).useStartAt } as any)}
+        >
+          <View style={styles.startToggleLeft}>
+            <Text style={styles.startToggleTitle}>Ustaw datę startu</Text>
+            <Text style={styles.startToggleSubtitle}>Wpłynie na odnowienia i powiadomienia</Text>
+          </View>
+          <Ionicons
+            name={(formData as any).useStartAt ? 'toggle' : 'toggle-outline'}
+            size={34}
+            color={(formData as any).useStartAt ? 'rgba(191, 168, 255, 0.95)' : 'rgba(255,255,255,0.55)'}
+          />
+        </TouchableOpacity>
+
+        <View
+          style={[styles.row, { marginTop: 12, opacity: (formData as any).useStartAt ? 1 : 0.45 }]}
+          pointerEvents={(formData as any).useStartAt ? 'auto' : 'none'}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={styles.reminderMiniLabel}>Data startu</Text>
+            <TextInput
+              style={styles.reminderInput}
+              value={String((formData as any).startDate ?? '')}
+              onChangeText={(text) => setFormData({ ...formData, startDate: text } as any)}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor="rgba(255,255,255,0.45)"
+              autoCapitalize="none"
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.reminderMiniLabel}>Godzina</Text>
+            <TextInput
+              style={styles.reminderInput}
+              value={String((formData as any).startTime ?? '')}
+              onChangeText={(text) => setFormData({ ...formData, startTime: text } as any)}
+              placeholder="HH:MM"
+              placeholderTextColor="rgba(255,255,255,0.45)"
+              autoCapitalize="none"
+            />
+          </View>
+        </View>
+
+        <Text style={styles.label}>Powiadomienia</Text>
+        <View style={styles.remindersBox}>
+          {Array.isArray(formData.reminders) && formData.reminders.length > 0 ? (
+            formData.reminders.map((r: any, idx: number) => (
+              <View key={idx} style={styles.reminderRow}>
+                <View style={styles.reminderInputs}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.reminderMiniLabel}>Dni przed</Text>
+                    <TextInput
+                      style={styles.reminderInput}
+                      value={String(r?.daysBefore ?? '')}
+                      onChangeText={(text) => {
+                        const next = [...(formData.reminders as any[])];
+                        const days = Number(String(text).replace(/[^0-9]/g, ''));
+                        next[idx] = { ...next[idx], daysBefore: Number.isFinite(days) ? days : 0 };
+                        setFormData({ ...formData, reminders: next });
+                      }}
+                      keyboardType="numeric"
+                      placeholder="3"
+                      placeholderTextColor="rgba(255,255,255,0.45)"
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.reminderMiniLabel}>Godzina</Text>
+                    <TextInput
+                      style={styles.reminderInput}
+                      value={String(r?.time ?? '')}
+                      onChangeText={(text) => {
+                        const next = [...(formData.reminders as any[])];
+                        next[idx] = { ...next[idx], time: text };
+                        setFormData({ ...formData, reminders: next });
+                      }}
+                      placeholder="09:00"
+                      placeholderTextColor="rgba(255,255,255,0.45)"
+                      autoCapitalize="none"
+                    />
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.reminderRemove}
+                  onPress={() => {
+                    const next = [...(formData.reminders as any[])];
+                    next.splice(idx, 1);
+                    setFormData({ ...formData, reminders: next });
+                  }}
+                >
+                  <Ionicons name="trash-outline" size={18} color="#FF3B30" />
+                </TouchableOpacity>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.remindersEmpty}>Brak reguł. Dodaj pierwsze powiadomienie.</Text>
+          )}
+
+          <TouchableOpacity
+            style={styles.reminderAdd}
+            onPress={() => {
+              const next = Array.isArray(formData.reminders) ? [...(formData.reminders as any[])] : [];
+              next.push({ daysBefore: 3, time: '09:00', enabled: true });
+              setFormData({ ...formData, reminders: next });
+            }}
+          >
+            <Ionicons name="add" size={18} color="rgba(255,255,255,0.92)" />
+            <Text style={styles.reminderAddText}>Dodaj regułę</Text>
+          </TouchableOpacity>
+        </View>
+
         <View style={styles.row}>
           <View style={{ flex: 2 }}>
             <Input
@@ -212,6 +503,21 @@ export default function EditSubscriptionModal() {
             </TouchableOpacity>
           ))}
         </View>
+
+        <View style={styles.notesHeader}>
+          <Text style={styles.label}>Notatki</Text>
+          <Text style={styles.notesCounter}>{(formData.notes?.length ?? 0)}/500</Text>
+        </View>
+        <TextInput
+          style={styles.notesInput}
+          value={formData.notes}
+          onChangeText={(text) => setFormData({ ...formData, notes: text })}
+          placeholder="Np. numer klienta, hasło do konta, data promocji…"
+          placeholderTextColor="rgba(255,255,255,0.55)"
+          multiline
+          textAlignVertical="top"
+          maxLength={500}
+        />
 
         <Button title="Zapisz zmiany" onPress={handleUpdate} loading={loading} />
         
@@ -272,6 +578,105 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 24,
   },
+  remindersBox: {
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    marginBottom: 24,
+    gap: 10,
+  },
+  remindersEmpty: {
+    color: 'rgba(255,255,255,0.60)',
+    fontWeight: '700',
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  reminderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 10,
+  },
+  customRow: {
+    gap: 10,
+  },
+  reminderInputs: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 10,
+  },
+  reminderMiniLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: 'rgba(255,255,255,0.65)',
+    marginBottom: 8,
+  },
+  reminderInput: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    color: 'rgba(255,255,255,0.92)',
+  },
+  reminderRemove: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 59, 48, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 59, 48, 0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reminderAdd: {
+    marginTop: 6,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: 'rgba(191, 168, 255, 0.20)',
+    borderWidth: 1,
+    borderColor: 'rgba(191, 168, 255, 0.28)',
+  },
+  reminderAddText: {
+    color: 'rgba(255,255,255,0.92)',
+    fontWeight: '900',
+    fontSize: 12,
+  },
+  startToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    marginBottom: 8,
+  },
+  startToggleLeft: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  startToggleTitle: {
+    color: 'rgba(255,255,255,0.92)',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  startToggleSubtitle: {
+    marginTop: 2,
+    color: 'rgba(255,255,255,0.60)',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   categoryButton: {
     width: '22%',
     aspectRatio: 1,
@@ -304,6 +709,29 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 24,
   },
+  notesHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    marginBottom: 12,
+  },
+  notesCounter: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.55)',
+  },
+  notesInput: {
+    minHeight: 120,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    color: 'rgba(255,255,255,0.92)',
+    marginBottom: 24,
+  },
   cycleButton: {
     paddingVertical: 12,
     paddingHorizontal: 16,
@@ -317,13 +745,12 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(191, 168, 255, 0.45)',
   },
   cycleText: {
-    fontSize: 16,
-    color: 'rgba(255,255,255,0.70)',
-    textAlign: 'center',
+    color: 'rgba(255,255,255,0.80)',
+    fontSize: 14,
+    fontWeight: '700',
   },
   cycleTextActive: {
     color: 'rgba(255,255,255,0.95)',
-    fontWeight: '600',
   },
   deleteButton: {
     paddingVertical: 16,

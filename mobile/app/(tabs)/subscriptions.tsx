@@ -501,6 +501,11 @@ const groupedByCategory = (filteredSubscriptions as any).reduce((acc: any, sub: 
                           <Text style={styles.metaText}>
                             {getDaysUntilText(sub.nextBillingDate)}
                           </Text>
+                          {!!sub.notes && (
+                            <Text style={styles.notesText} numberOfLines={2}>
+                              {String(sub.notes)}
+                            </Text>
+                          )}
                         </View>
                         <View style={styles.priceContainer}>
                           <Text style={styles.price}>
@@ -780,6 +785,13 @@ const styles = StyleSheet.create({
   metaText: {
     fontSize: 14,
     color: 'rgba(255,255,255,0.62)',
+  },
+  notesText: {
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 18,
+    color: 'rgba(255,255,255,0.72)',
+    fontWeight: '600',
   },
   priceContainer: {
     alignItems: 'flex-end',

@@ -43,8 +43,22 @@ export default function AddSubscriptionModal() {
       price: '',
       currency: 'PLN',
       billingCycle: 'MONTHLY',
+      useStartAt: false,
       startDate: new Date().toISOString().split('T')[0],
+      startTime: '09:00',
+      customNotificationsDraft: [] as { date: string; time: string; note: string }[],
+      notes: '',
     });
+
+    const toStartAtIso = () => {
+      const date = String((formData as any).startDate ?? '').trim();
+      const time = String((formData as any).startTime ?? '').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+      if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(time)) return null;
+      const d = new Date(`${date}T${time}:00`);
+      if (Number.isNaN(d.getTime())) return null;
+      return d.toISOString();
+    };
   
     const handleSubmit = async () => {
       if (!formData.name || !formData.price) {
@@ -54,13 +68,37 @@ export default function AddSubscriptionModal() {
   
       try {
         setLoading(true);
+        const useStartAt = !!(formData as any).useStartAt;
+        const startAt = useStartAt ? toStartAtIso() : null;
+        if (useStartAt && !startAt) {
+          showToast.error('Nieprawidłowa data startu lub godzina (YYYY-MM-DD oraz HH:MM)');
+          return;
+        }
+
+        const customNotifications = Array.isArray((formData as any).customNotificationsDraft)
+          ? ((formData as any).customNotificationsDraft as any[])
+              .map((n) => {
+                const date = String(n?.date ?? '').trim();
+                const time = String(n?.time ?? '').trim();
+                const note = String(n?.note ?? '').trim();
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+                if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(time)) return null;
+                const d = new Date(`${date}T${time}:00`);
+                if (Number.isNaN(d.getTime())) return null;
+                return { notifyAt: d.toISOString(), note: note || undefined, enabled: true };
+              })
+              .filter(Boolean)
+          : [];
+
         await addSubscription({
           name: formData.name,
           category: formData.category as any,
           price: parseFloat(formData.price),
           currency: formData.currency,
           billingCycle: formData.billingCycle as any,
-          startDate: formData.startDate,
+          ...(useStartAt ? { startAt } : {}),
+          ...(customNotifications.length > 0 ? { customNotifications } : {}),
+          notes: formData.notes?.trim() ? formData.notes.trim() : undefined,
         } as any);
         showToast.success('Subskrypcja dodana! 🎉');
         router.back();
@@ -224,6 +262,157 @@ export default function AddSubscriptionModal() {
                 );
               })}
             </View>
+
+            <TouchableOpacity
+              style={styles.startToggleRow}
+              activeOpacity={0.9}
+              onPress={() => setFormData({ ...formData, useStartAt: !(formData as any).useStartAt } as any)}
+            >
+              <View style={styles.startToggleLeft}>
+                <Text style={styles.startToggleTitle}>Ustaw datę startu</Text>
+                <Text style={styles.startToggleSubtitle}>Wpłynie na odnowienia i powiadomienia</Text>
+              </View>
+              <Ionicons
+                name={(formData as any).useStartAt ? 'toggle' : 'toggle-outline'}
+                size={34}
+                color={(formData as any).useStartAt ? 'rgba(191, 168, 255, 0.95)' : 'rgba(255,255,255,0.55)'}
+              />
+            </TouchableOpacity>
+
+            <View style={[styles.row, { marginTop: 12, opacity: (formData as any).useStartAt ? 1 : 0.45 }]}
+              pointerEvents={(formData as any).useStartAt ? 'auto' : 'none'}
+            >
+              <GlassCard style={[styles.inputCard, { flex: 1 }]}>
+                <TextInput
+                  style={styles.input}
+                  value={(formData as any).startDate}
+                  onChangeText={(text) => setFormData({ ...formData, startDate: text } as any)}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={theme.colors.textSecondary}
+                  autoCapitalize="none"
+                />
+              </GlassCard>
+              <GlassCard style={[styles.inputCard, { flex: 1 }]}>
+                <TextInput
+                  style={styles.input}
+                  value={(formData as any).startTime}
+                  onChangeText={(text) => setFormData({ ...formData, startTime: text } as any)}
+                  placeholder="HH:MM"
+                  placeholderTextColor={theme.colors.textSecondary}
+                  autoCapitalize="none"
+                />
+              </GlassCard>
+            </View>
+          </View>
+
+          {/* Exact Notification */}
+          <View style={styles.section}>
+            <Text style={styles.label}>Dokładne powiadomienie</Text>
+
+            {Array.isArray((formData as any).customNotificationsDraft) && (formData as any).customNotificationsDraft.length > 0 ? (
+              (formData as any).customNotificationsDraft.map((n: any, idx: number) => (
+                <View key={idx} style={styles.customRow}>
+                  <View style={styles.customInputs}>
+                    <GlassCard style={[styles.inputCard, { flex: 1 }]}>
+                      <TextInput
+                        style={styles.input}
+                        value={String(n?.date ?? '')}
+                        onChangeText={(text) => {
+                          const next = [...((formData as any).customNotificationsDraft as any[])];
+                          next[idx] = { ...next[idx], date: text };
+                          setFormData({ ...(formData as any), customNotificationsDraft: next } as any);
+                        }}
+                        placeholder="YYYY-MM-DD"
+                        placeholderTextColor={theme.colors.textSecondary}
+                        autoCapitalize="none"
+                      />
+                    </GlassCard>
+
+                    <GlassCard style={[styles.inputCard, { flex: 1 }]}>
+                      <TextInput
+                        style={styles.input}
+                        value={String(n?.time ?? '')}
+                        onChangeText={(text) => {
+                          const next = [...((formData as any).customNotificationsDraft as any[])];
+                          next[idx] = { ...next[idx], time: text };
+                          setFormData({ ...(formData as any), customNotificationsDraft: next } as any);
+                        }}
+                        placeholder="HH:MM"
+                        placeholderTextColor={theme.colors.textSecondary}
+                        autoCapitalize="none"
+                      />
+                    </GlassCard>
+                  </View>
+
+                  <GlassCard style={[styles.inputCard, { marginTop: 10 }]}>
+                    <TextInput
+                      style={[styles.input, { paddingVertical: 14 }]}
+                      value={String(n?.note ?? '')}
+                      onChangeText={(text) => {
+                        const next = [...((formData as any).customNotificationsDraft as any[])];
+                        next[idx] = { ...next[idx], note: text };
+                        setFormData({ ...(formData as any), customNotificationsDraft: next } as any);
+                      }}
+                      placeholder="Notatka w treści powiadomienia…"
+                      placeholderTextColor={theme.colors.textSecondary}
+                      autoCapitalize="sentences"
+                      maxLength={500}
+                    />
+                  </GlassCard>
+
+                  <TouchableOpacity
+                    style={styles.customRemove}
+                    onPress={() => {
+                      const next = [...((formData as any).customNotificationsDraft as any[])];
+                      next.splice(idx, 1);
+                      setFormData({ ...(formData as any), customNotificationsDraft: next } as any);
+                    }}
+                  >
+                    <Ionicons name="trash-outline" size={18} color="#FF3B30" />
+                  </TouchableOpacity>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.customEmpty}>Dodaj jednorazowe powiadomienie na konkretny dzień i godzinę.</Text>
+            )}
+
+            <TouchableOpacity
+              style={styles.customAdd}
+              onPress={() => {
+                const next = Array.isArray((formData as any).customNotificationsDraft)
+                  ? [...((formData as any).customNotificationsDraft as any[])]
+                  : [];
+                next.push({
+                  date: new Date().toISOString().slice(0, 10),
+                  time: '09:00',
+                  note: '',
+                });
+                setFormData({ ...(formData as any), customNotificationsDraft: next } as any);
+              }}
+            >
+              <Ionicons name="add" size={18} color="#fff" />
+              <Text style={styles.customAddText}>Dodaj powiadomienie</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Notes */}
+          <View style={styles.section}>
+            <View style={styles.notesHeader}>
+              <Text style={styles.label}>Notatki</Text>
+              <Text style={styles.notesCounter}>{(formData.notes?.length ?? 0)}/500</Text>
+            </View>
+            <GlassCard style={styles.inputCard}>
+              <TextInput
+                style={[styles.input, styles.notesInput]}
+                value={formData.notes}
+                onChangeText={(text) => setFormData({ ...formData, notes: text })}
+                placeholder="Np. numer klienta, hasło do konta, data promocji…"
+                placeholderTextColor={theme.colors.textSecondary}
+                multiline
+                textAlignVertical="top"
+                maxLength={500}
+              />
+            </GlassCard>
           </View>
   
           {/* Submit Button */}
@@ -322,6 +511,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 16,
   },
+  notesHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    marginBottom: 12,
+  },
+  notesCounter: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.55)',
+  },
+  notesInput: {
+    minHeight: 110,
+    paddingTop: 16,
+  },
   row: {
     flexDirection: 'row',
     gap: 12,
@@ -379,5 +583,75 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: 'rgba(255,255,255,0.70)',
+  },
+  startToggleRow: {
+    marginTop: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: theme.radius.m,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  startToggleLeft: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  startToggleTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: 'rgba(255,255,255,0.92)',
+  },
+  startToggleSubtitle: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.55)',
+  },
+  customRow: {
+    marginBottom: 14,
+  },
+  customInputs: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  customRemove: {
+    alignSelf: 'flex-end',
+    marginTop: 10,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 59, 48, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 59, 48, 0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  customEmpty: {
+    color: 'rgba(255,255,255,0.60)',
+    fontWeight: '700',
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  customAdd: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: theme.radius.m,
+    backgroundColor: 'rgba(191, 168, 255, 0.20)',
+    borderWidth: 1,
+    borderColor: 'rgba(191, 168, 255, 0.28)',
+  },
+  customAddText: {
+    color: 'rgba(255,255,255,0.92)',
+    fontWeight: '900',
+    fontSize: 12,
   },
 });

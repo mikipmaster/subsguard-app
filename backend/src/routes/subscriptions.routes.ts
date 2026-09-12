@@ -7,7 +7,7 @@ import { createSubscriptionSchema, updateSubscriptionSchema } from '../validator
 const router = Router();
 
 // ⚠️ TEMPORARY: Auth disabled for testing - enable later!
-// router.use(verifyAuth);
+router.use(verifyAuth);
 
 router.get('/', subscriptionsController.getAll);
 router.get('/stats', subscriptionsController.getStats);

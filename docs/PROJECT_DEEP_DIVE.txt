@@ -1,0 +1,686 @@
+SUBSGUARD — DEEP DIVE (specyfikacja techniczna + historia zmian)
+
+Ten dokument jest celowo bardzo szczegółowy. Ma pełnić rolę „źródła prawdy” o architekturze i implementacji projektu, tak aby nowy programista mógł odtworzyć system od zera (mobile + backend) oraz zrozumieć wszystkie kluczowe decyzje i mechanizmy.
+
+Repo: SubsGuard — menedżer subskrypcji (aplikacja mobilna + backend API).
+
+----------------------------------------------------------------
+
+1. CEL PRODUKTU I ZAKRES
+
+1.1. Co robi aplikacja
+
+SubsGuard pozwala użytkownikowi:
+
+- dodawać subskrypcje (np. Netflix, Spotify)
+- przechowywać: nazwę, kategorię, cenę, walutę, cykl rozliczeniowy, notatki
+- śledzić koszty miesięczne/roczne i statystyki per kategoria
+- przeglądać listę subskrypcji i szczegóły
+- edytować i usuwać subskrypcje
+- ustawiać powiadomienia:
+  - cykliczne (np. 3 dni przed odnowieniem o 09:00)
+  - jednorazowe (dokładna data+godzina + notatka w treści powiadomienia)
+- dynamicznie wyliczać najbliższą datę odnowienia (nextBillingDate) na podstawie cyklu
+
+1.2. Co jest w repo
+
+Repozytorium jest monorepo w folderze subsguard/:
+
+- backend/ — API (Express + TypeScript + MongoDB/Mongoose)
+- mobile/ — aplikacja Expo/React Native (iOS/Android/Web)
+- docs/ — dokumentacja projektowa
+
+----------------------------------------------------------------
+
+2. STOS TECHNOLOGICZNY (DLACZEGO I JAK)
+
+2.1. Backend (Node.js + TypeScript)
+ 
+Plik: backend/package.json
+ 
+Najważniejsze biblioteki:
+ 
+- express — framework HTTP dla Node.js.
+  - Po co: budowa API (routing, middleware, obsługa request/response) w prosty, przewidywalny sposób.
+- mongoose — ODM (Object Data Modeling) dla MongoDB.
+  - Po co: definiujemy schematy modeli (np. Subscription) i wygodnie operujemy na danych (zapytania, walidacje, indexy).
+- mongodb — natywny driver MongoDB.
+  - Po co: pomocniczo do diagnostyki lub operacji „low-level”; na co dzień korzystamy głównie z Mongoose.
+- zod — walidator i parser danych.
+  - Po co: walidujemy payloady z mobile/web i jednocześnie „sanityzujemy” body (do backendu trafiają tylko dozwolone pola).
+- jsonwebtoken — implementacja JWT.
+  - Po co: podpis i weryfikacja access tokenów używanych do autoryzacji requestów.
+- bcryptjs — hashowanie haseł.
+  - Po co: bezpieczne przechowywanie haseł (hash + porównanie) zamiast plain text.
+- dotenv — ładowanie konfiguracji z pliku .env.
+  - Po co: sekrety i konfiguracje (Mongo URI, JWT secret) bez hardcodowania w repo.
+- cors — kontrola CORS.
+  - Po co: w dev umożliwia odpytywanie API z innego hosta/portu (np. aplikacja webowa lub mobile w Expo).
+
+Dlaczego TypeScript:
+
+- kontrakty danych (np. kształt Subscription)
+- minimalizacja regresji przy przebudowach (powiadomienia, daty, auth)
+- przewidywalność refactorów
+
+2.2. Mobile (Expo / React Native)
+ 
+Plik: mobile/package.json
+ 
+Najważniejsze biblioteki:
+ 
+- expo — runtime + tooling.
+  - Po co: szybki development (hot reload, prosta konfiguracja projektu, szybkie testy na iOS/Android).
+- expo-router — routing plikowy.
+  - Po co: porządek w nawigacji (tabs/auth/modals) bez ręcznego konfigurowania stosów i ścieżek.
+- react-native — framework UI.
+  - Po co: jeden kod UI dla iOS/Android (oraz częściowo web) z natywnymi komponentami.
+- zustand — lekki state management.
+  - Po co: proste store dla auth i subskrypcji bez dużej „ceremonii” i bez boilerplate.
+- axios — klient HTTP.
+  - Po co: komunikacja z backendem + interceptory na tokeny i refresh flow.
+- expo-constants — metadane środowiska uruchomieniowego.
+  - Po co: automatyczne wyliczenie adresu backendu w LAN (API_URL) na urządzeniu.
+- expo-secure-store + AsyncStorage — trwałe przechowywanie.
+  - Po co: tokeny auth na urządzeniu w SecureStore (bezpieczniej), a na web w AsyncStorage (bo SecureStore nie działa w przeglądarce).
+- expo-notifications — obsługa powiadomień w środowisku Expo.
+  - Po co: pobranie tokenu push w dev i odbiór powiadomień; docelowo (produkcja) push ma przejść na APNs/FCM.
+
+Uwaga strategiczna:
+
+- Aktualnie push działa przez Expo push service (backend wysyła na https://exp.host/--/api/v2/push/send)
+- Docelowo (sprzedaż w sklepach) planowana jest migracja do APNs (iOS) + FCM (Android) bez Expo push service
+
+----------------------------------------------------------------
+
+3. STRUKTURA KATALOGÓW (WAŻNE ENTRYPOINTY)
+
+3.1. Backend
+
+- backend/src/server.ts
+  - Cel: punkt wejścia aplikacji, odpowiedzialny za start Express i podpięcie routów.
+  - Ładowanie .env (dotenv.config())
+  - Start Express
+  - Podpięcie routów pod /api
+  - setInterval(... runPushNotificationsSweep ...) co 60 sekund
+  - Listen na 0.0.0.0 (dostęp z LAN)
+
+- backend/src/routes/index.ts
+  - Cel: agregacja modułów routingu.
+  - Endpoint GET /api/health
+  - Endpoint debug GET /api/debug/subscriptions-count (do wglądu w bazę)
+
+- backend/src/models/*.ts
+  - User.model.ts
+  - Subscription.model.ts
+  - Notification.model.ts
+
+  - Cel: źródło prawdy dla danych w MongoDB.
+  - Opisują kształt dokumentów i ich pola.
+  - Pozwalają trzymać spójność (typy, wymagania).
+  - Wspierają mechanizmy typu deduplikacja (np. unikalny index w Notification).
+
+- backend/src/services/*.ts
+  - subscription.service.ts — logika subskrypcji i dat
+  - pushNotifications.service.ts — sweep wysyłki push
+
+  - Cel: trzymać logikę biznesową poza kontrolerami.
+  - Kontroler ma być „cienki” (wejście/wyjście).
+  - Serwis liczy daty, buduje terminy, wykonuje sweep i integracje.
+
+- backend/src/middleware/*.ts
+  - auth.middleware.ts — verifyAuth
+  - validate.middleware.ts — walidacja Zod i sanityzacja body
+
+  - Cel: rozdzielić odpowiedzialności.
+  - Auth: weryfikacja tokenu i użytkownika przed logiką biznesową.
+  - ValidateRequest: gwarancja poprawnego kształtu danych i odfiltrowanie pól nieobsługiwanych.
+
+3.2. Mobile
+
+- mobile/app/_layout.tsx
+  - Cel: root stack (bez headerów).
+
+- mobile/app/(auth)/*
+  - Cel: logowanie/rejestracja.
+
+- mobile/app/(tabs)/*
+  - Cel: dashboard, subscriptions, analytics, settings.
+
+- mobile/app/modals/*
+  - Cel: dodawanie/edycja subskrypcji.
+
+- mobile/store/authStore.ts
+  - Cel: login, register, logout, loadUser.
+
+- mobile/store/subscriptionStore.ts
+  - Cel: fetchSubscriptions, addSubscription, updateSubscription, deleteSubscription.
+
+- mobile/services/api.ts
+  - Cel: wyliczenie baseURL (LAN).
+  - Interceptory (Bearer token + refresh flow).
+
+  - To jest centralny punkt komunikacji z backendem:
+  - Dzięki temu nie powielamy logiki tokenów i obsługi błędów w każdym screenie.
+
+- mobile/services/storage.ts
+  - Cel: abstrakcja storage zależna od platformy (web vs native).
+
+  - Dzięki temu ta sama logika auth działa na mobile i web:
+  - Na mobile używamy bezpieczniejszego SecureStore.
+  - Na web fallbackujemy do AsyncStorage.
+
+----------------------------------------------------------------
+
+4. KONTRAKTY DANYCH (MODELE I POLA)
+
+4.1. Subscription (backend)
+
+Plik: backend/src/models/Subscription.model.ts
+
+Najważniejsze pola:
+
+- userId: string
+  - uwaga: w tym projekcie userId w Subscription jest stringiem (nie ObjectId)
+
+- name: string
+- category: enum (STREAMING, FITNESS, SAAS, GAMING, MUSIC, CLOUD_STORAGE, NEWS, EDUCATION, OTHER)
+- price: number
+- currency: string (np. PLN, USD)
+- billingCycle: enum (DAILY, WEEKLY, MONTHLY, QUARTERLY, YEARLY)
+
+Daty:
+
+- startAt?: Date
+  - opcjonalna dokładna data+godzina startu subskrypcji
+- startDate: Date
+  - „anchor” do wyliczeń
+  - gdy startAt ustawione, startDate = startAt
+- nextBillingDate: Date
+  - najbliższa data odnowienia (z godziną)
+
+Powiadomienia:
+
+- reminderDays: number (0..14)
+- reminders?: { daysBefore: number; time: string; enabled: boolean }[]
+  - wieloelementowe powiadomienia „X dni przed o HH:MM”
+- customNotifications?: { notifyAt: Date; note?: string; enabled: boolean }[]
+  - jednorazowe powiadomienia o dokładnej dacie
+
+Status:
+
+- status: enum (ACTIVE, CANCELLED, PAUSED, EXPIRED)
+- cancelledAt?: Date
+- pausedAt?: Date
+
+Inne:
+
+- notes?: string (max 500)
+
+4.2. Notification (backend)
+
+Plik: backend/src/models/Notification.model.ts
+
+Cel: deduplikacja wysyłek + audyt
+
+Pola:
+
+- userId: ObjectId
+- subscriptionId: ObjectId
+- type: EMAIL | PUSH
+- status: PENDING | SENT | FAILED
+- key: string
+  - unikalny klucz deduplikacji (index unique):
+    - dla odnowień: renewal:<subId>:<nextBillingDateISO>:<daysBefore>:<time>
+    - dla jednorazowych: custom:<subId>:<notifyAtISO>
+- sentAt?: Date
+- failureReason?: string
+- metadata?: any
+
+Index:
+
+- NotificationSchema.index({ subscriptionId: 1, type: 1, key: 1 }, { unique: true, sparse: true })
+
+To zapewnia, że nawet jeśli sweep uruchomi się kilka razy w oknie +/- 5 minut, powiadomienie nie pójdzie drugi raz.
+
+4.3. User (backend)
+
+Plik: backend/src/models/User.model.ts
+
+Najważniejsze dla powiadomień:
+
+- pushToken?: string
+  - obecnie: token expo (rejestrowany z appki przez /users/push-token)
+
+Docelowo do migracji poza Expo:
+
+- rozbudowa o osobne tokeny per platforma (APNs/FCM) i/lub wielourządzeniowo
+
+----------------------------------------------------------------
+
+5. BACKEND: REQUEST FLOW, WALIDACJA, BEZPIECZEŃSTWO
+
+5.1. Standard odpowiedzi API
+
+W wielu kontrolerach stosowany jest format:
+
+- data — payload
+- error — obiekt z message (czasem details)
+- message — string
+
+Przykład (idea):
+
+- success: { data: ..., error: null, message: null }
+- fail:    { data: null, error: { message }, message }
+
+5.2. Walidacja Zod (validateRequest)
+
+Plik: backend/src/middleware/validate.middleware.ts
+
+Kluczowa cecha: middleware nie tylko waliduje, ale też podmienia req.body na wynik schema.parse(req.body).
+
+Dlaczego to ważne:
+
+- w UI istnieją pola techniczne (useStartAt, startTime, drafty), które nie powinny trafić do DB
+- schema.parse usuwa pola nieprzewidziane przez schemat (w praktyce — kształtuje payload do „dozwolonego” kontraktu), co chroni przed przypadkowymi nadpisaniami w Object.assign(subscription, data)
+
+5.3. Auth
+
+- /api/auth/*:
+  - register, login, refresh-token, logout, me
+- verifyAuth chroni wybrane endpointy
+
+Uwaga projektowa:
+
+- w subscriptions.routes.ts auth jest chwilowo wyłączony (linia zakomentowana). To należy włączyć przed produkcją.
+
+----------------------------------------------------------------
+
+6. LOGIKA SUBSKRYPCJI I DAT
+
+6.1. Wyliczanie nextBillingDate
+
+Plik: backend/src/services/subscription.service.ts
+
+Podstawowa idea:
+
+- przy tworzeniu:
+  - jeśli przesłano startAt, to jest to główny anchor
+  - w przeciwnym razie fallback na startDate albo now
+  - nextBillingDate = calculateNextBillingDate(startDate, billingCycle)
+
+- przy aktualizacji:
+  - jeśli zmienia się startAt:
+    - startDate = startAt i przelicz nextBillingDate
+  - jeśli startAt: null:
+    - usuń ręczne ustawienie i wróć do liczenia od createdAt
+  - jeśli zmienia się billingCycle:
+    - przelicz w oparciu o calculateUpcomingBillingDate tak, by zachować logikę „nadchodzącej” daty
+
+Ta logika jest kluczowa, aby:
+
+- nextBillingDate był zawsze sensowny (w przyszłości)
+- zmiana cyklu nie powodowała skoków wstecz
+
+6.2. Strefy czasowe (ważne)
+
+W UI występuje napięcie pomiędzy:
+
+- przechowywaniem dat w formie ISO (toISOString() => UTC)
+- wyświetlaniem lokalnie na urządzeniu
+
+W edycji naprawiono problem „cofania godziny o 1h” przez:
+
+- parsowanie new Date(iso) i formatowanie lokalne getHours()/getMinutes(), a nie slice(11,16)
+
+----------------------------------------------------------------
+
+7. POWIADOMIENIA PUSH (STAN OBECNY: EXPO)
+
+7.1. Architektura sweep
+
+Plik: backend/src/services/pushNotifications.service.ts
+
+Mechanizm:
+
+- server.ts uruchamia co 60 sekund runPushNotificationsSweep()
+- sweep definiuje okno:
+  - windowStart = now - 5 min
+  - windowEnd   = now + 5 min
+
+Dzięki temu:
+
+- nie musimy mieć idealnej synchronizacji co do sekundy
+- opóźnienia w Node/cron nie psują powiadomień
+- deduplikacja przez unikalny Notification.key zapobiega duplikatom
+
+7.2. Dwa typy powiadomień
+
+1) Powiadomienia cykliczne (odnowienia):
+
+- reminders[] albo fallback na { reminderDays, time: '09:00' }
+- dueAt budowane z nextBillingDate - daysBefore i ustawieniem godziny
+
+2) Powiadomienia jednorazowe (dokładne):
+
+- customNotifications[] z notifyAt
+- jeśli notifyAt w oknie sweepa → wysyłka
+
+7.3. Deduplikacja
+
+Deduplikacja oparta jest o zapis Notification.create(...) z unikalnym key.
+
+- Jeśli insert powoduje błąd duplicate key, sweep ignoruje wysyłkę (bo była już obsłużona)
+
+7.4. Debug logi
+
+Dodano logi:
+
+- [pushSweep] start ... window=[...]
+- [pushSweep] activeSubs=...
+- skip reason=noPushToken
+- custom due ... key=...
+- custom dedupe ...
+- custom sent/failed ...
+
+7.5. Ograniczenia Expo Go / Expo push
+
+W fazie dev:
+
+- backend wysyła payload na Expo push endpoint
+
+W praktyce:
+
+- Expo Go może mieć ograniczenia dot. remote push (szczególnie Android w niektórych wersjach)
+- W produkcji (sklepy) planowane jest odejście od Expo push service na rzecz APNs/FCM
+
+----------------------------------------------------------------
+
+8. MOBILE: ARCHITEKTURA APLIKACJI I PRZEPŁYWY
+
+8.1. Routing (expo-router)
+
+Plik: mobile/app/_layout.tsx
+
+Root:
+
+- Stack z wyłączonym header
+
+Grupy:
+
+- (auth) — logowanie, rejestracja
+- (tabs) — dashboard + lista subskrypcji + analytics + settings
+- modals — dodawanie/edycja subskrypcji
+
+8.2. Warstwa danych (Zustand)
+
+authStore
+
+Plik: mobile/store/authStore.ts
+
+- login(email, password):
+  - POST /auth/login
+  - zapis tokenów do storage
+  - ustaw user + isAuthenticated
+
+- register(name, email, password):
+  - POST /auth/register
+  - analogicznie
+
+- logout():
+  - opcjonalnie POST /auth/logout
+  - usuń tokeny
+
+- loadUser():
+  - GET /auth/me
+  - jeśli 401 → usuń tokeny i nie spamuj logów
+
+subscriptionStore
+
+Plik: mobile/store/subscriptionStore.ts
+
+- fetchSubscriptions():
+  - GET /subscriptions
+
+- addSubscription(data):
+  - POST /subscriptions
+
+- updateSubscription(id, data):
+  - PATCH /subscriptions/:id
+
+- deleteSubscription(id):
+  - DELETE /subscriptions/:id
+
+8.3. API client (Axios)
+
+Plik: mobile/services/api.ts
+
+Wyliczanie baseURL:
+
+- preferencja: EXPO_PUBLIC_API_URL
+- web: hostname z przeglądarki
+- native: Constants.expoConfig.hostUri / debuggerHost (LAN IP) → http://{ip}:3000/api
+
+Interceptory:
+
+- request:
+  - dla endpointów nie-auth dodaje Authorization: Bearer ...
+- response:
+  - 401 → refresh token flow (poza endpointami auth)
+  - wyciszenie console.error dla 401 w auth
+
+8.4. Storage
+
+Plik: mobile/services/storage.ts
+
+- web: AsyncStorage
+- native: SecureStore
+
+Powód:
+
+- tokeny na urządzeniu powinny być przechowywane bezpieczniej niż w plain storage
+
+----------------------------------------------------------------
+
+9. UI: KLUCZOWE EKRANY / MODALE
+
+9.1. Add subscription
+
+Plik: mobile/app/modals/add-subscription.tsx
+
+Najważniejsze sekcje:
+
+- nazwa, kategoria, cena/waluta, cykl
+- Ustaw datę startu:
+  - po włączeniu odblokowuje pola YYYY-MM-DD oraz HH:MM
+  - payload wysyła startAt jako ISO
+
+- Dokładne powiadomienie:
+  - lista wpisów: date, time, note
+  - mapowanie do payload customNotifications[{ notifyAt: ISO, note, enabled: true }]
+
+9.2. Edit subscription
+
+Plik: mobile/app/modals/edit-subscription.tsx
+
+- analogiczne pola
+- naprawiona konwersja ISO → lokalny czas dla startAt i customNotifications
+
+----------------------------------------------------------------
+
+10. URUCHAMIANIE PROJEKTU (DEV)
+
+Dokument operacyjny: docs/DEPLOYMENT.md
+
+Skrót:
+
+- Backend:
+
+  cd backend
+  npm install
+  npm run dev
+
+- Mobile:
+
+  cd mobile
+  npm install
+  npx expo start -c
+
+Wskazówki:
+
+- Telefon i komputer muszą być w tej samej sieci
+- Ustawienie EXPO_PUBLIC_API_URL eliminuje problemy z autodetekcją
+
+----------------------------------------------------------------
+
+11. CHRONOLOGICZNY HARMONOGRAM PRAC I ZMIAN (REKONSTRUKCJA)
+
+Poniższa lista jest rekonstrukcją zmian na podstawie obecnego kodu repo + prac wykonanych w trakcie implementacji.
+
+Etap 1 — Fundamenty backendu
+
+- Utworzenie backendu w Express + TypeScript
+- Konfiguracja .env przez dotenv
+- Połączenie z MongoDB przez Mongoose
+- Wprowadzenie middleware:
+  - CORS (dev), JSON body parser
+
+Etap 2 — Autoryzacja
+
+- Endpointy /auth/register, /auth/login, /auth/refresh-token, /auth/me
+- JWT access token + refresh token
+- Hashowanie haseł bcryptjs
+
+Etap 3 — Subskrypcje (CRUD)
+
+- Model Subscription
+- Endpointy:
+  - GET list
+  - POST create
+  - PATCH update
+  - DELETE delete
+
+- Walidacja requestów przez Zod
+
+Etap 4 — API response contract + stabilizacja
+
+- Ujednolicenie odpowiedzi { data, error, message }
+- Poprawki w mobile, aby lepiej mapować błędy z backendu
+
+Etap 5 — Mobile: routing i UI
+
+- Implementacja expo-router
+- Ekrany (tabs) + (auth)
+- Modale add/edit
+
+Etap 6 — Dynamiczny API_URL (LAN)
+
+- mobile/services/api.ts:
+  - automatyczne wyciąganie hosta i składanie http://{LAN_IP}:3000/api
+  - opcjonalny override EXPO_PUBLIC_API_URL
+
+Etap 7 — Powiadomienia: sweep + deduplikacja
+
+- Wprowadzenie Notification modelu
+- Wprowadzenie runPushNotificationsSweep() uruchamianego co 60 sekund
+- Deduplikacja przez unikalny Notification.key
+
+Etap 8 — Ręczna data startu subskrypcji (startAt)
+
+Cel: użytkownik może wskazać dokładny start (data + godzina), co wpływa na nextBillingDate.
+
+Zmiany:
+
+- Backend:
+  - dodanie startAt?: Date
+  - createSubscription: jeśli startAt, to jest to główny anchor
+  - updateSubscription:
+    - startAt === null wyłącza ręczny start
+  - walidacja startAt w Zod
+
+- Mobile:
+  - toggle Ustaw datę startu
+  - pola YYYY-MM-DD + HH:MM
+
+Etap 9 — Jednorazowe powiadomienia (customNotifications)
+
+Cel: użytkownik ustawia dokładną datę+godzinę i notatkę w treści.
+
+Zmiany:
+
+- Backend:
+  - customNotifications[] w Subscription
+  - walidacja customNotifications
+  - sweep obsługuje customNotifications
+
+- Mobile:
+  - sekcja Dokładne powiadomienie w add/edit
+
+Etap 10 — Poprawki logów 401 i stabilizacja auth na mobile
+
+- wyciszenie console.error dla spodziewanych 401 na endpointach auth
+- loadUser: 401 czyści tokeny i nie spamuje logami
+
+Etap 11 — Naprawa strefy czasowej (UI)
+
+- naprawa cofania godziny o 1h w edycji:
+  - ISO UTC nie jest wyświetlane przez slice
+  - konwersja do czasu lokalnego przez new Date(iso) + getHours()/getMinutes()
+
+----------------------------------------------------------------
+
+12. LISTA KLUCZOWYCH PUNKTÓW RYZYKA (CO DOPRACOWAĆ PRZED PRODUKCJĄ)
+
+- Auth w subscriptions: obecnie verifyAuth bywa wyłączony do testów. W produkcji musi być włączony.
+- Push niezależne od Expo: docelowo APNs/FCM i własne tokeny urządzeń.
+- Strefy czasowe: ustalić jednoznaczną politykę:
+  - przechowywanie UTC w DB
+  - wyświetlanie w local
+  - wejście użytkownika interpretować jako local i zapisywać jako UTC
+- Rate limiting / security hardening backendu
+- Obsługa wielu urządzeń na jednym koncie (tokeny push per device)
+
+----------------------------------------------------------------
+
+13. JAK ODTWORZYĆ PROJEKT OD ZERA (PLAN TECHNICZNY)
+ 
+Jeśli masz odtworzyć projekt od zera, minimalna kolejność wygląda tak:
+ 
+1) Backend:
+- Express + TypeScript + Mongo/Mongoose
+  - Cel: wystawić stabilne API i mieć typy po stronie backendu.
+- Modele: User, Subscription, Notification
+  - Cel: trzymać kontrakty danych w DB + mieć deduplikację wysyłek (Notification.key).
+- Auth: register/login/refresh/me
+  - Cel: bezpieczne logowanie (JWT) i możliwość odświeżania sesji bez ponownego logowania.
+- Middleware: verifyAuth, validateRequest(Zod) + sanitize
+  - Cel: request ma być autoryzowany i walidowany zanim trafi do logiki (oraz żeby przypadkowe pola nie nadpisały danych w DB).
+- Subscriptions CRUD
+  - Cel: pełna obsługa subskrypcji (create/update/delete/list), bo to rdzeń aplikacji.
+ 
+2) Mobile:
+- Expo RN + expo-router
+  - Cel: szybki development i prosta nawigacja przez strukturę plików.
+- Auth screens + token storage
+  - Cel: logowanie/rejestracja + przechowywanie tokenów między uruchomieniami.
+- API client z LAN baseURL
+  - Cel: stabilna komunikacja z backendem w dev (telefon w tej samej sieci co komputer).
+- Subscriptions list + add/edit modals
+  - Cel: podstawowy UX (lista + formularze), na których opiera się reszta funkcji.
+ 
+3) Powiadomienia:
+- Notification model + sweep co minute
+  - Cel: niezależne planowanie powiadomień po stronie backendu (bez polegania na harmonogramie telefonu).
+- Deduplikacja przez unikalny key
+  - Cel: nawet jeśli sweep „złapie” to samo okno czasowe kilka razy, nie wyśle duplikatów.
+- Wersja dev: expo push
+  - Cel: szybkie testy push w development.
+- Wersja prod: APNs/FCM
+  - Cel: pełna niezależność od Expo push service i poprawna ścieżka pod sklepy.
+
+----------------------------------------------------------------
+
+14. ANEKS: DOKUMENTY W DOCS/
+- docs/API.md — (placeholder, do uzupełnienia pełnym opisem endpointów)
+- docs/PROJECT_DEEP_DIVE.md — oryginał w Markdown
+- docs/PROJECT_DEEP_DIVE.txt — ta wersja w czystym tekście

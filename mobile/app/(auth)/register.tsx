@@ -19,27 +19,48 @@ export default function RegisterScreen() {
   const handleRegister = async () => {
     const normalizedEmail = email.trim().toLowerCase();
     if (!name || !normalizedEmail || !password || !confirmPassword) {
-      Alert.alert('Błąd', 'Wypełnij wszystkie pola');
+      if (Platform.OS === 'web') {
+        window.alert('Wypełnij wszystkie pola');
+      } else {
+        Alert.alert('Błąd', 'Wypełnij wszystkie pola');
+      }
       return;
     }
 
     if (password !== confirmPassword) {
-      Alert.alert('Błąd', 'Hasła nie są takie same');
+      if (Platform.OS === 'web') {
+        window.alert('Hasła nie są takie same');
+      } else {
+        Alert.alert('Błąd', 'Hasła nie są takie same');
+      }
       return;
     }
 
     if (password.length < 8) {
-      Alert.alert('Błąd', 'Hasło musi mieć min. 8 znaków');
+      if (Platform.OS === 'web') {
+        window.alert('Hasło musi mieć min. 8 znaków');
+      } else {
+        Alert.alert('Błąd', 'Hasło musi mieć min. 8 znaków');
+      }
       return;
     }
     
     try {
       setLoading(true);
       await register(name, normalizedEmail, password);
-      Alert.alert('Sukces', 'Rejestracja zakończona!');
+      if (Platform.OS === 'web') {
+        window.alert('Rejestracja zakończona!');
+      } else {
+        Alert.alert('Sukces', 'Rejestracja zakończona!');
+      }
       router.replace('/(tabs)');
     } catch (error: any) {
-      Alert.alert('Błąd rejestracji', error.message);
+      const msg = error?.message || 'Nie udało się zarejestrować.';
+      if (Platform.OS === 'web') {
+        window.alert(msg);
+      } else {
+        Alert.alert('Błąd rejestracji', msg);
+      }
     } finally {
       setLoading(false);
     }

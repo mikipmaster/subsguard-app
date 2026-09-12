@@ -9,10 +9,12 @@ export interface Subscription {
   price: number;
   currency: string;
   billingCycle: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY';
+  startAt?: string | null;
   startDate: string;
   nextBillingDate: string;
   status: 'ACTIVE' | 'CANCELLED' | 'PAUSED' | 'EXPIRED';
   reminderDays: number;
+  customNotifications?: { notifyAt: string; note?: string; enabled?: boolean }[];
   notes?: string;
   logoUrl?: string;
   websiteUrl?: string;

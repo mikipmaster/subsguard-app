@@ -47,6 +47,11 @@ export default function SubscriptionCard({ subscription, onPress }: Subscription
       <View style={styles.content}>
         <Text style={styles.name}>{subscription.name}</Text>
         <Text style={styles.cycle}>{daysUntil}</Text>
+        {!!subscription.notes && (
+          <Text style={styles.notes} numberOfLines={2}>
+            {subscription.notes}
+          </Text>
+        )}
       </View>
       
       <View style={styles.right}>
@@ -95,6 +100,13 @@ const styles = StyleSheet.create({
   cycle: {
     fontSize: 14,
     color: '#666',
+  },
+  notes: {
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#555',
+    fontWeight: '500',
   },
   right: {
     alignItems: 'flex-end',

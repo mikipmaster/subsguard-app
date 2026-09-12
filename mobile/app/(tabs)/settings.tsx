@@ -1,24 +1,45 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../store/authStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import GlassCard from '../../components/ui/GlassCard';
 import { theme } from '../../constants/theme';
 
 export default function SettingsScreen() {
   const { user, logout } = useAuthStore();
+  const { defaultCurrency, themePreference, loadSettings } = useSettingsStore();
+
+  useEffect(() => {
+    loadSettings();
+  }, []);
 
   const handleLogout = () => {
+    const runLogout = async () => {
+      try {
+        await logout();
+        router.replace('/(auth)/login');
+      } catch (e: any) {
+        const msg = e?.message || 'Nie udało się wylogować';
+        if (Platform.OS === 'web') window.alert(msg);
+        else Alert.alert('Błąd', msg);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const ok = window.confirm('Czy na pewno chcesz się wylogować?');
+      if (ok) runLogout();
+      return;
+    }
+
     Alert.alert('Wyloguj', 'Czy na pewno chcesz się wylogować?', [
       { text: 'Anuluj', style: 'cancel' },
       {
         text: 'Wyloguj',
         style: 'destructive',
-        onPress: async () => {
-          await logout();
-          router.replace('/(auth)/login');
-        },
+        onPress: runLogout,
       },
     ]);
   };
@@ -60,7 +81,7 @@ export default function SettingsScreen() {
           <Text style={styles.sectionTitle}>Ogólne</Text>
 
           <GlassCard style={styles.listCard}>
-            <TouchableOpacity style={styles.settingItem}>
+            <TouchableOpacity style={styles.settingItem} onPress={() => router.push('/settings/notifications')}>
               <View style={styles.settingLeft}>
                 <Ionicons name="notifications-outline" size={20} color="rgba(191, 168, 255, 0.95)" />
                 <Text style={styles.settingText}>Powiadomienia</Text>
@@ -70,26 +91,26 @@ export default function SettingsScreen() {
 
             <View style={styles.itemDivider} />
 
-            <TouchableOpacity style={styles.settingItem}>
+            <TouchableOpacity style={styles.settingItem} onPress={() => router.push('/settings/currency')}>
               <View style={styles.settingLeft}>
                 <Ionicons name="cash-outline" size={20} color="rgba(191, 168, 255, 0.95)" />
                 <Text style={styles.settingText}>Waluta domyślna</Text>
               </View>
               <View style={styles.settingRight}>
-                <Text style={styles.settingValue}>PLN</Text>
+                <Text style={styles.settingValue}>{defaultCurrency}</Text>
                 <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.55)" />
               </View>
             </TouchableOpacity>
 
             <View style={styles.itemDivider} />
 
-            <TouchableOpacity style={styles.settingItem}>
+            <TouchableOpacity style={styles.settingItem} onPress={() => router.push('/settings/theme')}>
               <View style={styles.settingLeft}>
                 <Ionicons name="color-palette-outline" size={20} color="rgba(191, 168, 255, 0.95)" />
                 <Text style={styles.settingText}>Motyw</Text>
               </View>
               <View style={styles.settingRight}>
-                <Text style={styles.settingValue}>Ciemny</Text>
+                <Text style={styles.settingValue}>{themePreference === 'SYSTEM' ? 'System' : themePreference === 'LIGHT' ? 'Jasny' : 'Ciemny'}</Text>
                 <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.55)" />
               </View>
             </TouchableOpacity>
@@ -101,7 +122,7 @@ export default function SettingsScreen() {
           <Text style={styles.sectionTitle}>Konto</Text>
 
           <GlassCard style={styles.listCard}>
-            <TouchableOpacity style={styles.settingItem}>
+            <TouchableOpacity style={styles.settingItem} onPress={() => router.push('/settings/premium')}>
               <View style={styles.settingLeft}>
                 <Ionicons name="card-outline" size={20} color="rgba(191, 168, 255, 0.95)" />
                 <Text style={styles.settingText}>Premium</Text>
@@ -111,7 +132,7 @@ export default function SettingsScreen() {
 
             <View style={styles.itemDivider} />
 
-            <TouchableOpacity style={styles.settingItem}>
+            <TouchableOpacity style={styles.settingItem} onPress={() => router.push('/settings/privacy')}>
               <View style={styles.settingLeft}>
                 <Ionicons name="shield-checkmark-outline" size={20} color="rgba(191, 168, 255, 0.95)" />
                 <Text style={styles.settingText}>Prywatność</Text>
@@ -121,7 +142,7 @@ export default function SettingsScreen() {
 
             <View style={styles.itemDivider} />
 
-            <TouchableOpacity style={styles.settingItem}>
+            <TouchableOpacity style={styles.settingItem} onPress={() => router.push('/settings/support')}>
               <View style={styles.settingLeft}>
                 <Ionicons name="help-circle-outline" size={20} color="rgba(191, 168, 255, 0.95)" />
                 <Text style={styles.settingText}>Pomoc i wsparcie</Text>

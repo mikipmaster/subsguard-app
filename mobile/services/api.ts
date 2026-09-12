@@ -79,15 +79,22 @@ api.interceptors.response.use(
     return response;
   },
   async (error) => {
-    const errorPayload = {
-      status: error.response?.status,
-      message: error.message,
-      code: error.code,
-      baseURL: error.config?.baseURL,
-      url: error.config?.url,
-      method: error.config?.method,
-    };
-    console.error('❌ Response error:', errorPayload);
+    const status = error.response?.status;
+    const url = String(error.config?.url ?? '');
+
+    // Avoid noisy LogBox on app startup when stored token is invalid/expired.
+    const shouldSilence = status === 401 && (url === '/auth/me' || isPublicAuthEndpoint(url));
+    if (!shouldSilence) {
+      const errorPayload = {
+        status,
+        message: error.message,
+        code: error.code,
+        baseURL: error.config?.baseURL,
+        url,
+        method: error.config?.method,
+      };
+      console.error('❌ Response error:', errorPayload);
+    }
     
     const originalRequest = error.config;
 

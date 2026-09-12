@@ -10,20 +10,33 @@ import GlassCard from '../../components/ui/GlassCard';
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [localLoading, setLocalLoading] = useState(false);
   const { login, isLoading } = useAuthStore();
 
   const handleLogin = async () => {
     const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail || !password) {
-      Alert.alert('Błąd', 'Wypełnij wszystkie pola');
+      if (Platform.OS === 'web') {
+        window.alert('Wypełnij wszystkie pola');
+      } else {
+        Alert.alert('Błąd', 'Wypełnij wszystkie pola');
+      }
       return;
     }
 
     try {
+      setLocalLoading(true);
       await login(normalizedEmail, password);
       router.replace('/(tabs)');
     } catch (error: any) {
-      Alert.alert('Błąd logowania', error.message);
+      const msg = error?.message || 'Nie udało się zalogować.';
+      if (Platform.OS === 'web') {
+        window.alert(msg);
+      } else {
+        Alert.alert('Błąd logowania', msg);
+      }
+    } finally {
+      setLocalLoading(false);
     }
   };
 
@@ -66,7 +79,7 @@ export default function LoginScreen() {
               <Button
                 title="Zaloguj się"
                 onPress={handleLogin}
-                loading={isLoading}
+                loading={isLoading || localLoading}
               />
             </GlassCard>
 

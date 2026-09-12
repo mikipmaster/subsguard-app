@@ -1,5 +1,5 @@
 import Subscription from '../models/Subscription.model';
-import { calculateNextBillingDate, normalizeMonthlyCost } from '../utils/date.util';
+import { calculateNextBillingDate, calculateUpcomingBillingDate, normalizeMonthlyCost } from '../utils/date.util';
 
 export async function getAllSubscriptions(userId: string) {
   return await Subscription.find({ userId, status: { $ne: 'EXPIRED' } }).sort({ nextBillingDate: 1 });
@@ -14,12 +14,14 @@ export async function getSubscriptionById(id: string, userId: string) {
 }
 
 export async function createSubscription(userId: string, data: any) {
-  const startDate = data.startDate ? new Date(data.startDate) : new Date();
+  const startAt = data.startAt ? new Date(data.startAt) : null;
+  const startDate = startAt || (data.startDate ? new Date(data.startDate) : new Date());
   const nextBillingDate = calculateNextBillingDate(startDate, data.billingCycle);
   
   const subscription = await Subscription.create({
     userId,
     ...data,
+    startAt: startAt || undefined,
     startDate,
     nextBillingDate
   });
@@ -29,14 +31,30 @@ export async function createSubscription(userId: string, data: any) {
 
 export async function updateSubscription(id: string, userId: string, data: any) {
   const subscription = await getSubscriptionById(id, userId);
+  const prevStartDate = subscription.startDate;
+  const prevNextBillingDate = subscription.nextBillingDate;
   
   Object.assign(subscription, data);
   
-  if (data.startDate || data.billingCycle) {
-    subscription.nextBillingDate = calculateNextBillingDate(
-      subscription.startDate,
-      subscription.billingCycle
-    );
+  const now = new Date();
+
+  if (data.startAt !== undefined) {
+    if (data.startAt === null) {
+      subscription.startAt = undefined;
+      const fallback = (subscription as any).createdAt ? new Date((subscription as any).createdAt) : now;
+      subscription.startDate = fallback;
+    } else {
+      const parsed = new Date(data.startAt);
+      subscription.startAt = parsed;
+      subscription.startDate = parsed;
+    }
+    subscription.nextBillingDate = calculateNextBillingDate(subscription.startDate, subscription.billingCycle, now);
+  } else if (data.startDate) {
+    subscription.startAt = undefined;
+    subscription.nextBillingDate = calculateNextBillingDate(subscription.startDate, subscription.billingCycle, now);
+  } else if (data.billingCycle) {
+    const anchor = prevNextBillingDate && prevNextBillingDate.getTime() > now.getTime() ? prevNextBillingDate : prevStartDate;
+    subscription.nextBillingDate = calculateUpcomingBillingDate(anchor, subscription.billingCycle, now);
   }
   
   await subscription.save();
@@ -71,6 +89,13 @@ export async function getSubscriptionStats(userId: string) {
   const activeCount = subscriptions.length;
   const totalMonthly = subscriptions.reduce((sum, sub) => sum + normalizeMonthlyCost(sub.price, sub.billingCycle), 0);
 
+  const categoryBreakdown = subscriptions.reduce((acc: Record<string, number>, sub: any) => {
+    const key = String(sub.category ?? 'OTHER');
+    const monthly = normalizeMonthlyCost(sub.price, sub.billingCycle);
+    acc[key] = (acc[key] ?? 0) + monthly;
+    return acc;
+  }, {});
+
   const averageMonthly = activeCount > 0 ? totalMonthly / activeCount : 0;
 
   let cheapest: any = null;
@@ -90,6 +115,9 @@ export async function getSubscriptionStats(userId: string) {
     totalYearly: Math.round(totalMonthly * 12 * 100) / 100,
     activeCount,
     averageMonthly: Math.round(averageMonthly * 100) / 100,
+    categoryBreakdown: Object.fromEntries(
+      Object.entries(categoryBreakdown).map(([k, v]) => [k, Math.round(v * 100) / 100])
+    ),
     cheapest: cheapest
       ? {
           id: cheapest.subscription._id,

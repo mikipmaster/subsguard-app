@@ -124,7 +124,17 @@ export const useAuthStore = create<AuthState>((set) => ({
       const { data } = await api.get('/auth/me');
       const user = data?.data;
       set({ user: user || null, isAuthenticated: !!user });
-    } catch (error) {
+    } catch (error: any) {
+      const status = error?.response?.status;
+      const url = String(error?.config?.url ?? '');
+
+      if (status === 401) {
+        await storage.removeItem('accessToken');
+        await storage.removeItem('refreshToken');
+        set({ user: null, isAuthenticated: false });
+        return;
+      }
+
       console.error('Load user error:', error);
       set({ isAuthenticated: false });
     }

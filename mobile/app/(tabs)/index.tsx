@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../store/authStore';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import { formatCurrency } from '../../utils/currency';
 import { formatShortDate, getDaysUntil, getDaysUntilText } from '../../utils/date';
 import GlassCard from '../../components/ui/GlassCard';
@@ -117,6 +118,7 @@ function useAnimatedCounter(end: number, duration: number = 1000) {
 export default function DashboardScreen() {
   const { user } = useAuthStore();
   const { subscriptions, fetchSubscriptions, isLoading, getTotalMonthly } = useSubscriptionStore();
+  const { defaultCurrency } = useSettingsStore();
   const [scrollY] = useState(new Animated.Value(0));
 
   const handleScroll = (event: any) => {
@@ -143,6 +145,13 @@ export default function DashboardScreen() {
   });
 
   const yourSubscriptions = useMemo(() => activeSubscriptions.slice(0, 3), [activeSubscriptions]);
+
+  const greeting = useMemo(() => {
+    const h = new Date().getHours();
+    if (h >= 5 && h < 12) return 'Dzień dobry,';
+    if (h >= 12 && h < 18) return 'Miłego popołudnia,';
+    return 'Dobry wieczór,';
+  }, []);
 
   const iconSpecFor = (name: string) => {
     const n = (name || '').toLowerCase();
@@ -194,7 +203,7 @@ export default function DashboardScreen() {
               <Text style={styles.avatarText}>{user?.name?.charAt(0).toUpperCase()}</Text>
             </GlassCard>
             <View>
-              <Text style={styles.goodEveningLabel}>Good evening,</Text>
+              <Text style={styles.goodEveningLabel}>{greeting}</Text>
               <Text style={styles.goodEveningName}>{user?.name?.split(' ')[0] || 'User'}</Text>
             </View>
           </View>
@@ -225,7 +234,7 @@ export default function DashboardScreen() {
               </View>
               <View style={styles.heroValueRow}>
                 <Text style={styles.heroValue}>{animatedMonthly}</Text>
-                <Text style={styles.heroCurrency}>PLN</Text>
+                <Text style={styles.heroCurrency}>{defaultCurrency}</Text>
               </View>
               <View style={styles.heroBottomRow}>
                 <View style={styles.fakeChartRow}>
@@ -258,7 +267,21 @@ export default function DashboardScreen() {
 
           {showSkeleton ? (
             <View style={{ height: 140 }} />
-          ) : yourSubscriptions.length === 0 ? null : (
+          ) : yourSubscriptions.length === 0 ? (
+            <GlassCard style={styles.emptyDashCard}>
+              <View style={styles.emptyDashIcon}>
+                <Ionicons name="receipt-outline" size={26} color="rgba(191, 168, 255, 0.95)" />
+              </View>
+              <View style={styles.emptyDashBody}>
+                <Text style={styles.emptyDashTitle}>Brak subskrypcji</Text>
+                <Text style={styles.emptyDashText}>Dodaj pierwszą subskrypcję, aby zobaczyć statystyki i nadchodzące płatności.</Text>
+                <TouchableOpacity style={styles.emptyDashCta} activeOpacity={0.9} onPress={() => router.push('/modals/add-subscription')}>
+                  <Ionicons name="add" size={18} color="#fff" />
+                  <Text style={styles.emptyDashCtaText}>Dodaj subskrypcję</Text>
+                </TouchableOpacity>
+              </View>
+            </GlassCard>
+          ) : (
             <View style={styles.subscriptionList}>
               {yourSubscriptions.map((sub) => {
                 const { label, color, logoUrl } = iconSpecFor(sub.name);
@@ -321,7 +344,12 @@ export default function DashboardScreen() {
           <View style={styles.timelineWrap}>
             {showSkeleton ? (
               <View style={{ height: 140 }} />
-            ) : upcomingPayments.length === 0 ? null : (
+            ) : upcomingPayments.length === 0 ? (
+              <GlassCard style={styles.emptyTimelineCard}>
+                <Text style={styles.emptyTimelineTitle}>Brak nadchodzących płatności</Text>
+                <Text style={styles.emptyTimelineText}>Gdy dodasz subskrypcje, pokażemy tu najbliższe odnowienia.</Text>
+              </GlassCard>
+            ) : (
               <View style={styles.timelineList}>
                 <View style={styles.timelineRail} />
                 {upcomingPayments.map((sub, idx) => {
@@ -555,6 +583,56 @@ const styles = StyleSheet.create({
   subscriptionList: {
     gap: 12,
   },
+  emptyDashCard: {
+    flexDirection: 'row',
+    gap: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  emptyDashIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: 'rgba(191, 168, 255, 0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(191, 168, 255, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyDashBody: {
+    flex: 1,
+  },
+  emptyDashTitle: {
+    color: 'rgba(255,255,255,0.92)',
+    fontWeight: '900',
+    fontSize: 14,
+  },
+  emptyDashText: {
+    marginTop: 6,
+    color: 'rgba(255,255,255,0.65)',
+    fontWeight: '700',
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  emptyDashCta: {
+    marginTop: 12,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(191, 168, 255, 0.95)',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
+  },
+  emptyDashCtaText: {
+    color: '#fff',
+    fontWeight: '900',
+    fontSize: 12,
+  },
   subscriptionCard: {
     paddingVertical: 14,
     paddingHorizontal: 14,
@@ -635,6 +713,25 @@ const styles = StyleSheet.create({
     marginTop: 14,
     gap: 14,
   },
+  emptyTimelineCard: {
+    paddingVertical: 16,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  emptyTimelineTitle: {
+    color: 'rgba(255,255,255,0.90)',
+    fontWeight: '900',
+    fontSize: 13,
+  },
+  emptyTimelineText: {
+    marginTop: 6,
+    color: 'rgba(255,255,255,0.60)',
+    fontWeight: '700',
+    fontSize: 12,
+    lineHeight: 18,
+  },
   timelineList: {
     position: 'relative',
     gap: 12,
@@ -685,6 +782,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 12,
     paddingVertical: 14,
     paddingHorizontal: 14,
     borderRadius: 16,
@@ -696,7 +794,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     flex: 1,
-    paddingRight: 12,
+    paddingRight: 8,
   },
   timelineServiceIcon: {
     width: 30,
@@ -720,11 +818,14 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.9)',
     fontWeight: '900',
     fontSize: 13,
+    flex: 1,
   },
   timelineAmount: {
     color: 'rgba(255,255,255,0.85)',
     fontWeight: '900',
     fontSize: 13,
+    minWidth: 86,
+    textAlign: 'right',
   },
   
 });
